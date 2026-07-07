@@ -1,0 +1,81 @@
+/* ============================================================
+   Kin — design tokens
+   The single source of truth for color, type, and surface style.
+   Import this once and reference the variables everywhere.
+   ============================================================ */
+:root{
+  /* ---- Ink (backgrounds, dark to light) ---- */
+  --ink:      #15171C;  /* app background — warm near-black */
+  --ink-2:    #1B1E25;  /* raised panels, plates */
+  --ink-3:    #22262F;  /* controls, inputs, cards */
+
+  /* ---- Bone (foreground text) ---- */
+  --bone:     #ECE4D3;  /* primary text — aged paper */
+  --bone-dim: #C9C1B1;  /* secondary text */
+  --muted:    #8A8474;  /* captions, dates, labels — faded ink */
+
+  /* ---- Gold (primary accent: heraldry, lineage, actions) ---- */
+  --gold:      #C9A863; /* accent, primary buttons, branch lines */
+  --gold-soft: #8F7C50; /* hovers, borders, dimmed gold */
+
+  /* ---- Verdigris (living relatives, "grant" actions) ---- */
+  --verd:      #7BA189; /* aged-copper green — a living person */
+  --verd-dim:  #4F6A5B; /* approve buttons, muted green */
+
+  /* ---- Rust (destructive / pending seals) ---- */
+  --rust:      #B4674C; /* decline, wax-seal notification badge */
+
+  /* ---- Structure ---- */
+  --line:   #2C303A;    /* hairline borders, dividers */
+  --shadow: 0 18px 50px -20px rgba(0,0,0,.7);
+  --plate-shadow: 0 2px 3px rgba(0,0,0,.42);
+
+  /* ---- Plate gradient (nameplate fill) ---- */
+  --plate-top:    #24282F;
+  --plate-bottom: #191C22;
+
+  /* ---- Typography ---- */
+  --font-display: 'Grenze Gotisch', serif;   /* the "Kin" wordmark & crests only — used with restraint */
+  --font-head:    'Fraunces', serif;         /* names, section headings */
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', monospace; /* dates, labels, IDs */
+
+  /* Type scale (px) */
+  --t-wordmark: 34; --t-h1: 25; --t-h2: 23; --t-name: 19;
+  --t-body: 14; --t-small: 13; --t-label: 10.5; --t-mono: 11;
+
+  /* ---- Radii ---- */
+  --r-sm: 8px; --r-md: 11px; --r-lg: 14px; --r-xl: 18px;
+
+  /* ---- Spacing (px) ---- */
+  --s-1: 4; --s-2: 8; --s-3: 12; --s-4: 16; --s-5: 20; --s-6: 24;
+
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(.4,0,.1,1);
+  --dur-fast: .15s; --dur: .3s; --dur-panel: .32s;
+}
+
+/* Semantic mappings (optional convenience) */
+:root{
+  --bg: var(--ink);
+  --surface: var(--ink-2);
+  --control: var(--ink-3);
+  --text: var(--bone);
+  --text-muted: var(--muted);
+  --accent: var(--gold);
+  --living: var(--verd);
+  --danger: var(--rust);
+  --border: var(--line);
+}
+
+/*
+  USAGE NOTES
+  - Blackletter (--font-display) appears ONLY on the Kin wordmark and family
+    crest letters. Never set body copy or long headings in it.
+  - A person is "living" when death year is null: mark with --verd
+    (edge accent on plates, dot in cards, ring in the panel).
+  - Gold is the app's one loud color: lineage lines, the primary button,
+    focus emphasis. Keep everything else quiet so gold reads as special.
+  - Rust is reserved for decline actions and the pending/notification seal.
+  - Google Fonts: Grenze+Gotisch, Fraunces, Inter, JetBrains+Mono.
+*/

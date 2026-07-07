@@ -1,0 +1,1131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- Kin - genealogy prototype (graph model: persons + unions). Single file, in-memory. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Kin — a family record. Browse genealogy as a graph: descendant trees, ancestor charts, and a relationship finder.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#15171C">
+<meta property="og:title" content="Kin — Family Record">
+<meta property="og:description" content="Browse genealogy as a graph: descendant trees, ancestor charts, and a relationship finder.">
+<meta property="og:image" content="./Kin.png">
+<title>Kin — Family Record</title>
+<link rel="icon" href="./Kin.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="./vendor/d3.v7.8.5.min.js"></script>
+
+<style>
+:root{
+  --ink:#15171C; --ink-2:#1B1E25; --ink-3:#22262F;
+  --bone:#ECE4D3; --bone-dim:#C9C1B1;
+  --gold:#C9A863; --gold-soft:#8f7c50;
+  --verd:#7BA189; --verd-dim:#4f6a5b;
+  --rust:#B4674C;
+  --muted:#8A8474; --line:#2C303A;
+  --shadow:0 18px 50px -20px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0; background:radial-gradient(1100px 640px at 82% -12%, rgba(201,168,99,.045), transparent 62%), var(--ink);
+  color:var(--bone); font-family:Inter,system-ui,sans-serif; -webkit-font-smoothing:antialiased; overflow:hidden}
+button{font-family:inherit; cursor:pointer; color:inherit; border:none; background:none}
+input,textarea,select{font-family:inherit}
+::selection{background:rgba(201,168,99,.3)}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ---------- top bar ---------- */
+.topbar{position:fixed; top:0; left:0; right:0; height:64px; z-index:40; display:flex; align-items:center; gap:16px; padding:0 18px;
+  background:linear-gradient(180deg, rgba(21,23,28,.96), rgba(21,23,28,.72)); backdrop-filter:blur(10px); border-bottom:1px solid var(--line)}
+.wordmark{display:flex; align-items:baseline; gap:11px; user-select:none}
+.wordmark .glyph{font-family:'Grenze Gotisch',serif; font-weight:600; font-size:34px; line-height:1; color:var(--gold); text-shadow:0 2px 14px rgba(201,168,99,.18)}
+.wordmark .sub{font-size:11px; letter-spacing:.28em; text-transform:uppercase; color:var(--muted)}
+.switcher{display:flex; gap:4px; padding:4px; background:var(--ink-3); border:1px solid var(--line); border-radius:12px}
+.fam-btn{display:flex; align-items:center; gap:8px; padding:7px 13px; border-radius:9px; font-size:13.5px; color:var(--bone-dim); transition:.18s; white-space:nowrap}
+.fam-btn .crest{font-family:'Grenze Gotisch',serif; font-weight:600; font-size:21px; color:var(--gold-soft); line-height:1}
+.fam-btn:hover{color:var(--bone); background:rgba(255,255,255,.03)}
+.fam-btn.active{background:var(--ink); color:var(--bone); box-shadow:inset 0 0 0 1px var(--gold-soft)}
+.fam-btn.active .crest{color:var(--gold)}
+.fam-btn .lock{font-size:11px; opacity:.7}
+.ghostbtn{display:flex; align-items:center; gap:7px; padding:8px 13px; border-radius:10px; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim); font-size:13px; transition:.18s}
+.ghostbtn:hover{color:var(--bone); border-color:var(--gold-soft)}
+.spacer{flex:1}
+.search{display:flex; align-items:center; gap:8px; padding:8px 12px; width:190px; background:var(--ink-3); border:1px solid var(--line); border-radius:10px; color:var(--muted)}
+.search input{background:none; border:none; outline:none; color:var(--bone); width:100%; font-size:13px}
+.iconbtn{position:relative; width:38px; height:38px; border-radius:10px; display:grid; place-items:center; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim); transition:.18s}
+.iconbtn:hover{color:var(--bone); border-color:var(--gold-soft)}
+.iconbtn.on{color:var(--ink); background:var(--gold); border-color:var(--gold)}
+.seal{position:absolute; top:-6px; right:-6px; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--rust); color:#fff;
+  font-size:11px; font-weight:600; display:grid; place-items:center; font-family:'JetBrains Mono',monospace; box-shadow:0 2px 8px rgba(180,103,76,.5)}
+.btn-primary{display:flex; align-items:center; gap:8px; padding:9px 15px; border-radius:10px; background:var(--gold); color:#1a1712; font-weight:600; font-size:13.5px; transition:.18s}
+.btn-primary:hover{filter:brightness(1.07); transform:translateY(-1px)}
+
+/* ---------- stage ---------- */
+.stage{position:fixed; inset:64px 0 0 0}
+#canvas{width:100%; height:100%; display:block; cursor:grab}
+#canvas:active{cursor:grabbing}
+.node-g{cursor:pointer}
+.node-plate>rect:first-of-type{transition:stroke .15s}
+.node-g:hover .node-plate>rect:first-of-type{stroke:var(--gold-soft)}
+.add-slot rect{transition:stroke .15s}
+.add-slot:hover rect{stroke:var(--gold-soft)}
+
+.stagehdr{position:absolute; top:20px; left:24px; pointer-events:none}
+.stagehdr .crumb{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:.03em; margin-bottom:5px}
+.stagehdr h1{font-family:'Fraunces',serif; font-weight:500; font-size:25px; line-height:1; margin:0; color:var(--bone)}
+.stagehdr .meta{margin-top:6px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); display:flex; gap:12px}
+.stagehdr b{color:var(--gold); font-weight:500}
+
+.dock{position:absolute; left:24px; bottom:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+.viewtoggle{display:flex; gap:3px; padding:4px; background:rgba(27,30,37,.85); backdrop-filter:blur(8px); border:1px solid var(--line); border-radius:11px}
+.viewtoggle button{padding:7px 13px; border-radius:8px; font-size:12.5px; color:var(--muted)}
+.viewtoggle button.active{background:var(--ink); color:var(--bone); box-shadow:inset 0 0 0 1px var(--gold-soft)}
+.viewtoggle button:hover:not(.active){color:var(--bone)}
+.zoomers{display:flex; gap:3px; padding:4px; background:rgba(27,30,37,.85); backdrop-filter:blur(8px); border:1px solid var(--line); border-radius:11px}
+.zoomers button{width:30px; height:30px; border-radius:7px; color:var(--bone-dim); font-size:16px; display:grid; place-items:center}
+.zoomers button:hover{background:var(--ink); color:var(--gold)}
+.hintchip{position:absolute; right:24px; bottom:22px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted);
+  background:rgba(27,30,37,.7); backdrop-filter:blur(8px); padding:8px 13px; border:1px solid var(--line); border-radius:10px; max-width:260px; line-height:1.5}
+
+/* records */
+.records{position:absolute; inset:0; overflow:auto; padding:118px 40px 60px; display:none}
+.records.show{display:block}
+.rec-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:16px; max-width:1200px; margin:0 auto}
+.plate{background:var(--ink-2); border:1px solid var(--line); border-radius:14px; padding:18px; transition:.18s; position:relative; text-align:left}
+.plate:hover{border-color:var(--gold-soft); transform:translateY(-2px); box-shadow:var(--shadow)}
+.plate .av{width:44px; height:44px; border-radius:11px; display:grid; place-items:center; font-family:'Fraunces',serif; font-size:19px; color:var(--ink); background:var(--gold); margin-bottom:12px}
+.plate .live{width:7px; height:7px; border-radius:50%; background:var(--verd); display:inline-block; margin-right:7px; vertical-align:middle}
+.plate h3{font-family:'Fraunces',serif; font-weight:500; font-size:19px; margin:0 0 4px}
+.plate .dates{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted); margin-bottom:10px}
+.plate p{font-size:13px; line-height:1.5; color:var(--bone-dim); margin:0}
+.plate .fam-chip{position:absolute; top:14px; right:14px; font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); border:1px solid var(--line); padding:3px 6px; border-radius:6px}
+.rec-title{max-width:1200px; margin:0 auto 22px; display:flex; align-items:baseline; gap:14px}
+.rec-title h2{font-family:'Fraunces',serif; font-weight:500; font-size:26px; margin:0}
+.rec-title span{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted)}
+
+/* ---------- side panel ---------- */
+.panel{position:fixed; top:64px; right:0; bottom:0; width:400px; max-width:94vw; z-index:45; background:linear-gradient(180deg,var(--ink-2),var(--ink));
+  border-left:1px solid var(--line); box-shadow:var(--shadow); transform:translateX(100%); transition:transform .32s cubic-bezier(.4,0,.1,1); display:flex; flex-direction:column}
+.panel.open{transform:translateX(0)}
+.panel.wide{width:500px}
+.panel-head{padding:22px 24px 18px; border-bottom:1px solid var(--line); position:relative}
+.panel-close{position:absolute; top:16px; right:16px; width:32px; height:32px; border-radius:8px; color:var(--muted); font-size:18px; display:grid; place-items:center}
+.panel-close:hover{background:var(--ink-3); color:var(--bone)}
+.panel-body{padding:20px 24px; overflow:auto; flex:1}
+.pv-av{width:60px; height:60px; border-radius:15px; display:grid; place-items:center; font-family:'Fraunces',serif; font-size:25px; color:var(--ink); background:var(--gold); margin-bottom:13px}
+.panel-head h2{font-family:'Fraunces',serif; font-weight:500; font-size:25px; margin:0 40px 6px 0; line-height:1.1}
+.pv-dates{font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--gold)}
+.pv-tag{display:inline-flex; align-items:center; gap:6px; margin-top:11px; padding:5px 11px; border-radius:20px; font-size:11px; letter-spacing:.05em; text-transform:uppercase; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim)}
+.dot{width:8px; height:8px; border-radius:50%}
+.actions{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:22px}
+.act{display:flex; align-items:center; justify-content:center; gap:7px; padding:10px; border-radius:10px; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim); font-size:12.5px; font-weight:500; transition:.15s}
+.act:hover{color:var(--bone); border-color:var(--gold-soft); background:var(--ink)}
+.act.full{grid-column:1/-1}
+.act svg{width:15px; height:15px}
+.field{margin-bottom:18px}
+.field label{display:block; font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:7px}
+.field p{margin:0; font-size:14px; line-height:1.6; color:var(--bone-dim)}
+.field a{color:var(--verd); text-decoration:none; font-size:13.5px; word-break:break-all}
+.field a:hover{text-decoration:underline}
+.rel-list{display:flex; flex-direction:column; gap:6px}
+.rel{display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:9px; background:var(--ink-3); border:1px solid transparent; transition:.15s; text-align:left; width:100%}
+.rel:hover{border-color:var(--gold-soft)}
+.rel .rav{width:28px; height:28px; border-radius:7px; display:grid; place-items:center; font-size:11px; font-family:'Fraunces',serif; color:var(--ink); background:var(--gold-soft); flex:none}
+.rel .rn{font-size:13px}
+.rel .rr{margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+
+/* forms */
+.finput{width:100%; padding:11px 13px; background:var(--ink-3); border:1px solid var(--line); border-radius:10px; color:var(--bone); font-size:14px; outline:none; transition:.15s}
+.finput:focus{border-color:var(--gold-soft); box-shadow:0 0 0 3px rgba(201,168,99,.12)}
+textarea.finput{resize:vertical; min-height:74px; line-height:1.5}
+select.finput{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238A8474' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 13px center; padding-right:32px}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+.hint{font-size:12px; color:var(--muted); line-height:1.5; margin:-2px 0 16px}
+.panel-foot{padding:15px 24px; border-top:1px solid var(--line); display:flex; gap:10px}
+.btn-ghost{flex:1; padding:11px; border-radius:10px; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim); font-size:13.5px; font-weight:500}
+.btn-ghost:hover{color:var(--bone); border-color:var(--gold-soft)}
+.btn-fill{flex:1; padding:11px; border-radius:10px; background:var(--gold); color:#1a1712; font-weight:600; font-size:13.5px}
+.btn-fill:hover{filter:brightness(1.07)}
+.btn-fill:disabled{opacity:.4; cursor:not-allowed}
+
+/* tabs (admin/directory) */
+.tabs{display:flex; gap:4px; margin-bottom:18px; background:var(--ink-3); padding:4px; border-radius:11px; border:1px solid var(--line)}
+.tabs button{flex:1; padding:8px 6px; border-radius:8px; font-size:12px; color:var(--muted); position:relative}
+.tabs button.active{background:var(--ink); color:var(--bone); box-shadow:inset 0 0 0 1px var(--gold-soft)}
+.tabs .tseal{position:absolute; top:2px; right:6px; min-width:15px; height:15px; padding:0 4px; border-radius:8px; background:var(--rust); color:#fff; font-size:9.5px; display:grid; place-items:center; font-family:'JetBrains Mono',monospace}
+
+.card{background:var(--ink-3); border:1px solid var(--line); border-radius:12px; padding:15px; margin-bottom:12px}
+.card h4{font-family:'Fraunces',serif; font-weight:500; font-size:16px; margin:0 0 3px}
+.card .sub{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:8px}
+.card p{font-size:12.5px; color:var(--bone-dim); line-height:1.5; margin:0 0 12px}
+.card .row{display:flex; gap:8px}
+.card .row button{flex:1; padding:8px; border-radius:8px; font-size:12.5px; font-weight:500}
+.approve{background:var(--verd-dim); color:var(--bone)} .approve:hover{background:var(--verd); color:var(--ink)}
+.decline{background:var(--ink-2); border:1px solid var(--line); color:var(--muted)} .decline:hover{color:var(--rust); border-color:var(--rust)}
+.roleseg{display:flex; gap:3px; background:var(--ink-2); padding:3px; border-radius:8px; border:1px solid var(--line)}
+.roleseg button{padding:5px 9px; border-radius:6px; font-size:11px; color:var(--muted)}
+.roleseg button.on{background:var(--gold); color:var(--ink); font-weight:600}
+.memrow{display:flex; align-items:center; gap:11px; padding:10px 0; border-bottom:1px solid var(--line)}
+.memrow:last-child{border-bottom:none}
+.memrow .mav{width:34px; height:34px; border-radius:9px; display:grid; place-items:center; font-family:'Fraunces',serif; font-size:14px; color:var(--ink); background:var(--gold-soft); flex:none}
+.memrow .mn{font-size:13.5px} .memrow .me{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted)}
+.dircard{background:var(--ink-3); border:1px solid var(--line); border-radius:13px; padding:16px; margin-bottom:11px; display:flex; align-items:center; gap:14px; transition:.15s}
+.dircard:hover{border-color:var(--gold-soft)}
+.dircard .dcrest{width:46px; height:46px; border-radius:12px; display:grid; place-items:center; font-family:'Grenze Gotisch',serif; font-weight:600; font-size:24px; color:var(--gold); background:var(--ink-2); border:1px solid var(--line); flex:none}
+.dircard h4{font-family:'Fraunces',serif; font-weight:500; font-size:17px; margin:0 0 2px} .dircard .dsub{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted)}
+.dircard .daction{margin-left:auto; padding:8px 13px; border-radius:9px; font-size:12.5px; font-weight:500; background:var(--gold); color:var(--ink)}
+.dircard .daction.locked{background:var(--ink-2); border:1px solid var(--line); color:var(--bone-dim)}
+.dircard .daction.locked:hover{border-color:var(--gold-soft); color:var(--bone)}
+.empty{text-align:center; color:var(--muted); font-size:13px; padding:26px 0; line-height:1.6}
+.divlabel{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:20px 0 10px}
+
+/* modal */
+.scrim{position:fixed; inset:0; z-index:60; background:rgba(10,11,14,.72); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:24px}
+.scrim.show{display:flex}
+.modal{width:420px; max-width:100%; background:linear-gradient(180deg,var(--ink-2),var(--ink-3)); border:1px solid var(--line); border-radius:18px; padding:30px; box-shadow:var(--shadow); animation:pop .3s cubic-bezier(.2,.9,.3,1.3); max-height:88vh; overflow:auto}
+@keyframes pop{from{transform:scale(.94) translateY(8px); opacity:0}to{transform:none; opacity:1}}
+.clasp{width:50px; height:50px; border-radius:14px; background:var(--ink); border:1px solid var(--gold-soft); display:grid; place-items:center; margin:0 auto 16px; color:var(--gold)}
+.modal h2{font-family:'Fraunces',serif; font-weight:500; font-size:23px; text-align:center; margin:0 0 6px}
+.modal .crest-lg{font-family:'Grenze Gotisch',serif; font-weight:600; color:var(--gold); font-size:22px}
+.modal p.sub{text-align:center; color:var(--muted); font-size:13px; margin:0 0 20px; line-height:1.5}
+.err{color:var(--rust); font-size:12.5px; text-align:center; margin-top:10px; min-height:16px}
+
+.toast{position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px); z-index:70; background:var(--ink-2); border:1px solid var(--gold-soft); color:var(--bone); padding:12px 20px; border-radius:12px; font-size:13.5px; box-shadow:var(--shadow); opacity:0; transition:.3s; pointer-events:none}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+.toast b{color:var(--gold)}
+
+@media (max-width:760px){ .switcher,.wordmark .sub{display:none} .search{width:130px} .hintchip{display:none} }
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+
+/* ---------- configurable appearance (settings) ---------- */
+html[data-accent="copper"]{--gold:#C98963; --gold-soft:#8F6350}
+html[data-accent="iris"]{--gold:#9D96D2; --gold-soft:#6E6899}
+html[data-accent="rose"]{--gold:#C97C93; --gold-soft:#8F5766}
+html[data-theme="light"]{
+  --ink:#F3EEE2; --ink-2:#ECE6D6; --ink-3:#E3DBC7;
+  --bone:#2B2721; --bone-dim:#4C463B; --muted:#8B8272;
+  --line:#D3CAB4; --verd:#4F7A61; --verd-dim:#6FA184;
+  --shadow:0 18px 50px -22px rgba(70,60,40,.45);
+}
+html[data-theme="light"] body{background:radial-gradient(1100px 640px at 82% -12%, rgba(201,168,99,.12), transparent 62%), var(--ink)}
+html[data-theme="light"] .topbar{background:linear-gradient(180deg, rgba(243,238,226,.96), rgba(243,238,226,.78))}
+html[data-theme="light"] .viewtoggle, html[data-theme="light"] .zoomers, html[data-theme="light"] .hintchip{background:rgba(236,230,214,.85)}
+html[data-theme="light"] .plate .av, html[data-theme="light"] .pv-av, html[data-theme="light"] .rel .rav, html[data-theme="light"] .memrow .mav,
+html[data-theme="light"] .iconbtn.on, html[data-theme="light"] .roleseg button.on, html[data-theme="light"] .dircard .daction{color:#2B2721}
+html[data-glow="off"] body{background:var(--ink)}
+html[data-anim="off"] *{animation:none!important; transition:none!important}
+.setrow{display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px 0; border-bottom:1px solid var(--line)}
+.setrow:last-child{border-bottom:none}
+.setrow .sl{font-size:13.5px} .setrow .sd{font-size:11px; color:var(--muted); margin-top:2px; line-height:1.4; max-width:210px}
+.act.danger:hover{color:var(--rust); border-color:var(--rust)}
+.pathstep{display:flex; align-items:center; gap:8px; margin:2px 0 2px 13px; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--gold)}
+.pathstep::before{content:''; width:1px; height:14px; background:var(--gold-soft); margin-right:4px}
+.statchips{display:flex; gap:8px; flex-wrap:wrap; max-width:1200px; margin:0 auto 20px}
+.statchips span{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); background:var(--ink-2); border:1px solid var(--line); padding:6px 11px; border-radius:8px}
+.statchips b{color:var(--gold); font-weight:500}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="wordmark"><span class="glyph">Kin</span><span class="sub">Family Record</span></div>
+  <div class="switcher" id="switcher"></div>
+  <button class="ghostbtn" id="browseBtn">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="M11 7v8M7 11h8" opacity=".0"/><path d="M3 11h2M19 11h2M11 3v2M11 19v2"/></svg>
+    Families
+  </button>
+  <div class="spacer"></div>
+  <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="search" placeholder="Search kin…  ( / )" autocomplete="off" aria-label="Search kin"></div>
+  <button class="iconbtn" id="settingsBtn" title="Settings" aria-label="Settings">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+  </button>
+  <button class="iconbtn" id="adminBtn" title="Admin console" aria-label="Admin console">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l7 4v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6l7-4z"/></svg>
+    <span class="seal" id="adminSeal" style="display:none">0</span>
+  </button>
+  <button class="btn-primary" id="addBtn">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg> Add kin
+  </button>
+</div>
+
+<!-- STAGE -->
+<div class="stage">
+  <svg id="canvas"></svg>
+  <div class="stagehdr">
+    <div class="crumb" id="crumb"></div>
+    <h1 id="famTitle">Blaker</h1>
+    <div class="meta" id="famMeta"></div>
+  </div>
+  <div class="dock">
+    <div class="viewtoggle" id="viewToggle">
+      <button data-view="desc" class="active">Descendants</button>
+      <button data-view="anc">Ancestors</button>
+      <button data-view="records">Records</button>
+    </div>
+    <div class="zoomers" id="zoomers"><button data-z="out" aria-label="Zoom out">−</button><button data-z="fit" title="Fit" aria-label="Fit view">⊙</button><button data-z="in" aria-label="Zoom in">+</button></div>
+    <button class="ghostbtn" id="relateBtn" title="Trace how two people are related">⇄ How related?</button>
+  </div>
+  <div class="hintchip" id="hintchip"></div>
+  <div class="records" id="records"><div class="rec-title"><h2 id="recTitle">Blaker</h2><span id="recCount"></span></div><div class="statchips" id="recStats"></div><div class="rec-grid" id="recGrid"></div></div>
+</div>
+
+<aside class="panel" id="panel" role="complementary"><div class="panel-head" id="panelHead"></div><div class="panel-body" id="panelBody"></div><div class="panel-foot" id="panelFoot" style="display:none"></div></aside>
+<div class="scrim" id="scrim"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="importFile" accept="application/json,.json" style="display:none">
+
+<script>
+/* ================================================================
+   KIN — graph data model.  Everything is in memory for the session.
+   persons  : the people (nodes)
+   unions   : marriages / partnerships joining two persons
+   a child points at the union it descends from (childOf), which lets
+   EITHER parent's ancestry be extended upward independently.
+   ================================================================ */
+const DB = {
+  families:{
+    blaker:{id:'blaker', name:'Blaker', crest:'B', side:'Family line', visibility:'private', passwordHash:'747c4f045a5b27294c559ab6dc8187038b04349e6217fbd8f824bd1a993aa47e',
+      rootId:'b_jack', pivotId:'b_jack', desc:'Private Blaker family record.'},
+    harrow:{id:'harrow', name:'Harrow', crest:'H', side:'Demonstration line', visibility:'public', passwordHash:null,
+      rootId:'h_edmund', pivotId:'h_daniel', desc:'A fictional public family, seeded so anyone can explore how Kin works.'},
+  },
+  persons:{}, unions:{},
+  /* platform tables the backend will own */
+  users:[
+    {id:'u1', name:'Jack Blaker', email:'jack@kin.app', roles:{blaker:'owner', harrow:'owner'}},
+  ],
+  familyRequests:[],
+  joinRequests:[],
+};
+
+/* seed helpers */
+let _pid=0,_uid=0;
+function person(id,familyId,name,born,died,bio,extra={}){ DB.persons[id]={id,familyId,name,born,died,bio,links:extra.links||[],contacts:extra.contacts||[],childOf:extra.childOf||null,status:extra.status||'approved'}; return id; }
+function union(id,a,b,extra={}){ DB.unions[id]={id,a,b,type:extra.type||'marriage',status:extra.status||'approved'}; return id; }
+
+/* ---- Blaker starting point ---- */
+person('b_jack','blaker','Jack Blaker','March 8, 1990',null,'Me.');
+
+/* ---- Harrow: fictional demo family (three generations, one open branch) ---- */
+person('h_edmund','harrow','Edmund Harrow',1901,1978,'Clockmaker of Lewes. The line begins here.');
+person('h_rose','harrow','Rose Harrow',1904,1990,'Née Cottrell. Kept every letter she ever received.');
+union('hu1','h_edmund','h_rose');
+person('h_arthur','harrow','Arthur Harrow',1927,1999,'Merchant navy, then a bookshop.',{childOf:'hu1'});
+person('h_vera','harrow','Vera Ashdown',1930,2011,'Married out of the village and into an orchestra.',{childOf:'hu1'});
+person('h_margaret','harrow','Margaret Harrow',1929,2015,'Née Lane. Schoolteacher; the family memory.');
+union('hu2','h_arthur','h_margaret');
+person('h_thomas','harrow','Thomas Harrow',1955,null,'Retired engineer. Keeper of this record.',{childOf:'hu2'});
+person('h_eleanor','harrow','Eleanor Harrow',1958,2020,'Painter. Her studio is still full.',{childOf:'hu2'});
+person('h_grace','harrow','Grace Harrow',1957,null,'Née Okafor. Botanist, met Thomas over a broken greenhouse.');
+union('hu3','h_thomas','h_grace');
+person('h_daniel','harrow','Daniel Harrow',1984,null,'Software, allotments, five-a-side.',{childOf:'hu3'});
+person('h_sophie','harrow','Sophie Harrow',1988,null,'Doctor. Adding her partner\'s line next.',{childOf:'hu3'});
+
+/* ================================================================
+   state + helpers
+   ================================================================ */
+/* ================================================================
+   SETTINGS — every option persists to this browser (localStorage)
+   ================================================================ */
+const SETTINGS_KEY='kin.settings.v1', DB_KEY='kin.db.v1';
+const SETTING_DEFAULTS={theme:'dark',accent:'gold',plate:'standard',ancGens:3,showDates:true,livingMarker:true,anim:true,autosave:true,yearOnly:false,glow:true,links:'curved',confirmDanger:true};
+let settings={...SETTING_DEFAULTS};
+try{ const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}'); if(s&&typeof s==='object') settings={...SETTING_DEFAULTS,...s}; }catch{}
+function saveSettings(){ try{ localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings)); }catch{} }
+let PW=158, PH=52;
+function applySettings(){
+  const h=document.documentElement;
+  h.dataset.theme=settings.theme; h.dataset.accent=settings.accent;
+  h.dataset.anim=settings.anim?'on':'off'; h.dataset.glow=settings.glow?'on':'off';
+  [PW,PH]=({compact:[136,46],standard:[158,52],roomy:[182,60]})[settings.plate]||[158,52];
+}
+applySettings();
+
+/* ---- persistence: the whole record survives a reload ---- */
+function saveDB(){
+  if(!settings.autosave) return;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify({v:1, seq:[_pid,_uid], families:DB.families, persons:DB.persons,
+    unions:DB.unions, users:DB.users, familyRequests:DB.familyRequests, joinRequests:DB.joinRequests})); }
+  catch{ toast('Could not save — browser storage is full or blocked.'); }
+}
+function loadDB(){
+  try{
+    const d=JSON.parse(localStorage.getItem(DB_KEY)||'null');
+    if(!d || d.v!==1 || typeof d.families!=='object' || typeof d.persons!=='object') return false;
+    DB.families=d.families; DB.persons=d.persons; DB.unions=d.unions||{}; DB.users=d.users||DB.users;
+    DB.familyRequests=d.familyRequests||[]; DB.joinRequests=d.joinRequests||[];
+    [_pid,_uid]=Array.isArray(d.seq)?d.seq:[9000,9000];
+    return true;
+  }catch{ return false; }
+}
+loadDB();
+
+const state = { familyId:'harrow', view:'desc', descRoot:null, ancFocus:null, admin:false, query:'', dirTab:'browse', adminTab:'pending' };
+if(!DB.families[state.familyId]) state.familyId=Object.keys(DB.families)[0];
+const unlocked = new Set();
+try{ JSON.parse(sessionStorage.getItem('kin.unlocked')||'[]').forEach(id=>{ if(DB.families[id]) unlocked.add(id); }); }catch{}
+function rememberUnlocked(){ try{ sessionStorage.setItem('kin.unlocked',JSON.stringify([...unlocked])); }catch{} }
+const ADMIN_PASSWORD_HASH = '963f38f03414352a440b315e16237c7baabf098c863153aaf1ef3500be4fbe57';
+const $ = s=>document.querySelector(s);
+const fam = ()=>DB.families[state.familyId];
+const P = id=>DB.persons[id];
+const U = id=>DB.unions[id];
+const isLiving = p=>p && p.died==null;
+const yearOf = v=>{ const m=String(v??'').match(/-?\d{3,4}/); return m?m[0]:null; };
+const dval = v=> v==null?null:(settings.yearOnly?(yearOf(v)??v):v);
+const dates = p=> p.died==null ? ('b. '+(dval(p.born)||'—')) : ((dval(p.born)||'—')+'–'+dval(p.died));
+const initials = n=>String(n||'').trim().split(/\s+/).filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+const trunc=(s,n)=> s && s.length>n ? s.slice(0,n-1)+'…':s;
+const membersOf = fid=>Object.values(DB.persons).filter(p=>p.familyId===fid);
+const approvedOf = fid=>membersOf(fid).filter(p=>p.status==='approved');
+const unionsOf = pid=>Object.values(DB.unions).filter(u=>u.a===pid||u.b===pid);
+const partnerIn = (pid,u)=> u.a===pid?u.b:u.a;
+const childrenOf = pid=>{ const kids=[]; unionsOf(pid).forEach(u=>{ Object.values(DB.persons).forEach(p=>{ if(p.childOf===u.id) kids.push(p); }); }); return kids; };
+const parentsOf = pid=>{ const p=P(pid); if(!p||!p.childOf) return []; const u=U(p.childOf); return [P(u.a),P(u.b)].filter(Boolean); };
+const primaryPartner = pid=>{ const u=unionsOf(pid).find(u=>u.status==='approved'); return u?P(partnerIn(pid,u)):null; };
+const pendingKin = fid=>membersOf(fid).filter(p=>p.status==='pending');
+const totalAdminCount = ()=> pendingKin(state.familyId).length + DB.familyRequests.filter(r=>r.status==='pending').length + DB.joinRequests.filter(r=>r.status==='pending'&&r.family===state.familyId).length;
+const hasAccess = fid=>state.admin || unlocked.has(fid) || DB.families[fid]?.visibility!=='private';
+const esc = value=>String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const strong = value=>`<b>${esc(value)}</b>`;
+const htmlId = value=>String(value ?? '').replace(/[^a-zA-Z0-9_-]/g,'');
+const safeUrl = value=>{
+  try{
+    const raw = String(value ?? '').trim();
+    if(!/^https?:\/\//i.test(raw)) return null;
+    const u = new URL(raw);
+    return ['http:','https:'].includes(u.protocol) ? u.href : null;
+  } catch { return null; }
+};
+const safeEmail = value=>{
+  const raw = String(value ?? '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ? raw : null;
+};
+const parseDateValue = value=>{
+  const raw = String(value ?? '').trim();
+  if(!raw) return null;
+  if(/^-?\d{1,4}$/.test(raw)) return Number(raw);
+  const normalized = raw.replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi,'$1');
+  const parsed = new Date(`${normalized} 00:00:00`);
+  if(Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString('en-US',{month:'long', day:'numeric', year:'numeric'});
+};
+const passwordDigest = async (fid,password)=>{
+  if(!window.crypto?.subtle) return null;
+  const bytes = new TextEncoder().encode(`kin:${fid}:${password}`);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
+};
+
+function toast(html){ const t=$('#toast'); t.innerHTML=html; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2600); }
+
+/* svg + zoom */
+const svg=d3.select('#canvas'); let g=svg.append('g');
+const zoom=d3.zoom().scaleExtent([.25,2.8]).on('zoom',e=>g.attr('transform',e.transform));
+svg.call(zoom);
+function fitView(){ const node=g.node(); if(!node) return; const b=node.getBBox(); if(!b.width) return;
+  const cw=svg.node().clientWidth, ch=svg.node().clientHeight, pad=90;
+  const k=Math.min((cw-pad*2)/b.width,(ch-pad*2)/b.height,1.25);
+  svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity.translate(cw/2-(b.x+b.width/2)*k, ch/2-(b.y+b.height/2)*k).scale(k)); }
+
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function addDefs(){
+  const light=settings.theme==='light';
+  const defs=g.append('defs');
+  const grad=defs.append('linearGradient').attr('id','plateGrad').attr('x1',0).attr('y1',0).attr('x2',0).attr('y2',1);
+  grad.append('stop').attr('offset','0%').attr('stop-color',light?'#F0EADB':'#24282F');
+  grad.append('stop').attr('offset','100%').attr('stop-color',light?'#E7DFCD':'#191C22');
+  const f=defs.append('filter').attr('id','plateShadow').attr('x','-20%').attr('y','-30%').attr('width','140%').attr('height','170%');
+  f.append('feDropShadow').attr('dx',0).attr('dy',2).attr('stdDeviation',3).attr('flood-color',light?'#6B5C3F':'#000').attr('flood-opacity',light?.2:.42);
+}
+function reveal(){
+  if(reduceMotion || !settings.anim) return;
+  g.selectAll('.node-g').style('opacity',0).transition().delay((d,i)=>Math.min(i*15,320)).duration(300).style('opacity',1);
+  g.selectAll('.links path').attr('stroke-opacity',0).transition().duration(520).attr('stroke-opacity',.5);
+}
+
+/* ================================================================
+   DESCENDANTS  — couples joined by a marriage bar, children below
+   ================================================================ */
+const SPGAP=14;
+function descHierarchy(rootId){
+  const seen=new Set();
+  function build(pid){
+    if(seen.has(pid)) return {pid, partner:null, children:[]}; seen.add(pid);
+    const partner=primaryPartner(pid);
+    const kids=childrenOf(pid).filter(k=>k.status==='approved').map(k=>build(k.id));
+    return {pid, partner: partner&&partner.status==='approved'?partner.id:null, children:kids};
+  }
+  return d3.hierarchy(build(rootId));
+}
+function renderDesc(){
+  g.selectAll('*').remove(); addDefs();
+  let rootId = state.descRoot || fam().rootId;
+  if(!P(rootId)) rootId = (approvedOf(state.familyId)[0]||{}).id;
+  if(!rootId){ $('#hintchip').textContent='This record is empty — use “Add kin” to begin the line.'; return; }
+  const root = descHierarchy(rootId);
+  d3.tree().nodeSize([2*PW+64,158]).separation((a,b)=>a.parent===b.parent?1.05:1.4)(root);
+
+  g.append('g').attr('class','links').selectAll('path').data(root.links()).join('path')
+    .attr('fill','none').attr('stroke','var(--gold)').attr('stroke-opacity',.5).attr('stroke-width',1.4)
+    .attr('d',d=>{const sx=d.source.x,sy=d.source.y+PH/2,tx=d.target.x,ty=d.target.y-PH/2,my=(sy+ty)/2;
+      return settings.links==='stepped' ? `M${sx},${sy} V${my} H${tx} V${ty}` : `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;});
+
+  const ng=g.append('g').selectAll('g').data(root.descendants()).join('g').attr('transform',d=>`translate(${d.x},${d.y})`);
+  ng.each(function(d){
+    const el=d3.select(this), p=P(d.data.pid), partner=d.data.partner?P(d.data.partner):null;
+    if(partner){
+      const off=(PW+SPGAP)/2;
+      el.append('line').attr('x1',-off+PW/2).attr('y1',0).attr('x2',off-PW/2).attr('y2',0).attr('stroke','var(--gold-soft)').attr('stroke-width',1.4);
+      plate(el.append('g').attr('transform',`translate(${-off},0)`), p, false);
+      plate(el.append('g').attr('transform',`translate(${off},0)`), partner, true);
+    } else {
+      plate(el.append('g'), p, false);
+    }
+  });
+  reveal(); fitView();
+}
+function plate(sel,p,married){
+  const gg=sel.attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(p.id);});
+  const pl=gg.append('g').attr('class','node-plate');
+  pl.append('rect').attr('x',-PW/2).attr('y',-PH/2).attr('width',PW).attr('height',PH).attr('rx',11)
+    .attr('fill','url(#plateGrad)').attr('stroke','var(--line)').attr('stroke-width',1).attr('filter','url(#plateShadow)');
+  pl.append('rect').attr('x',-PW/2).attr('y',-PH/2+8).attr('width',3).attr('height',PH-16).attr('rx',1.5)
+    .attr('fill', (settings.livingMarker&&isLiving(p))?'var(--verd)':'var(--gold)').attr('opacity',.95);
+  const nameChars=Math.round(17*PW/158);
+  pl.append('text').attr('x',-PW/2+17).attr('y',settings.showDates?-3:4).attr('fill','var(--bone)').style('font','500 13px Fraunces,serif').text(trunc(p.name,nameChars));
+  if(settings.showDates) pl.append('text').attr('x',-PW/2+17).attr('y',14).attr('fill','var(--muted)').style('font','400 10px "JetBrains Mono",monospace')
+    .text(trunc(dates(p)+(married?' · married in':''),Math.round(22*PW/158)));
+  return gg;
+}
+
+/* ================================================================
+   ANCESTORS  — a proper half-fan pedigree chart (radial, done right)
+   center = focus; rings fan upward through parents/grandparents.
+   Empty wedges are clickable invitations to add that ancestor.
+   ================================================================ */
+function ancestorAt(focusId,gen,k){
+  let cur=focusId;
+  for(let i=0;i<gen;i++){ const p=P(cur); if(!p||!p.childOf) return null; const u=U(p.childOf); cur = ((k>>(gen-1-i))&1) ? u.b : u.a; }
+  return cur;
+}
+/* Horizontal pedigree: focus on the left, generations climb rightward.
+   Each column doubles; a person's y is the midpoint of their two parents. */
+function renderAnc(){
+  g.selectAll('*').remove(); addDefs();
+  let focusId = state.ancFocus || fam().pivotId;
+  if(!P(focusId)) focusId = (approvedOf(state.familyId)[0]||{}).id;
+  if(!focusId){ $('#hintchip').textContent='This record is empty — use “Add kin” to begin the line.'; return; }
+  const GEN=Math.min(5,Math.max(2,Number(settings.ancGens)||3)), colGap=PW+92, rowH=PH+28;
+  const leaves=2**GEN, pos={};
+  pos[GEN]={}; for(let k=0;k<leaves;k++) pos[GEN][k]={y:(k-(leaves-1)/2)*rowH};
+  for(let gen=GEN-1; gen>=0; gen--){ pos[gen]={}; for(let k=0;k<2**gen;k++) pos[gen][k]={y:(pos[gen+1][2*k].y+pos[gen+1][2*k+1].y)/2}; }
+  const pidAt=(gen,k)=> gen===0?focusId:ancestorAt(focusId,gen,k);
+
+  const layer=g.append('g');
+  // column headers
+  const heads=['Focus','Parents','Grandparents','Great-grandparents','2× great-grandparents','3× great-grandparents'];
+  const topY=-(leaves/2)*rowH-16;
+  for(let gen=0; gen<=GEN; gen++) layer.append('text').attr('x',gen*colGap).attr('y',topY).attr('text-anchor','middle')
+    .attr('fill','var(--muted)').attr('letter-spacing','.14em').style('font','500 10px "JetBrains Mono",monospace').text((heads[gen]||'').toUpperCase());
+
+  // connectors (child right edge -> bracket -> parent left edge)
+  const links=layer.append('g').attr('class','links');
+  for(let gen=0; gen<GEN; gen++) for(let k=0;k<2**gen;k++){ const childPid=pidAt(gen,k); if(!childPid) continue;
+    const cx=gen*colGap, cy=pos[gen][k].y;
+    [0,1].forEach(bit=>{ const pk=2*k+bit, ppid=pidAt(gen+1,pk); const px=(gen+1)*colGap, py=pos[gen+1][pk].y, midx=(cx+px)/2, known=!!ppid;
+      links.append('path').attr('fill','none').attr('stroke','var(--gold)').attr('stroke-opacity',known?.5:.16).attr('stroke-width',1.3).attr('stroke-dasharray',known?'':'4 4')
+        .attr('d',`M${cx+PW/2},${cy} H${midx} V${py} H${px-PW/2}`); });
+  }
+
+  // plates
+  for(let gen=0; gen<=GEN; gen++) for(let k=0;k<2**gen;k++){ const pid=pidAt(gen,k), x=gen*colGap, y=pos[gen][k].y;
+    if(pid){ const gp=layer.append('g').attr('transform',`translate(${x},${y})`); plate(gp,P(pid),false);
+      if(gen===0) gp.select('.node-plate>rect').attr('stroke','var(--gold)').attr('stroke-width',1.6); }
+    else { const childPid=pidAt(gen-1,k>>1); if(!childPid) continue;
+      const gp=layer.append('g').attr('class','node-g add-slot').attr('transform',`translate(${x},${y})`).on('click',(e)=>{e.stopPropagation(); openAdd('parent',childPid);});
+      gp.append('rect').attr('x',-PW/2).attr('y',-PH/2).attr('width',PW).attr('height',PH).attr('rx',11).attr('fill','transparent').attr('stroke','var(--line)').attr('stroke-dasharray','5 4');
+      gp.append('text').attr('text-anchor','middle').attr('y',3).attr('fill','var(--muted)').style('font','500 12px Fraunces,serif').text('＋ Add parent');
+    }
+  }
+  reveal(); fitView();
+}
+
+/* ================================================================
+   RECORDS
+   ================================================================ */
+function familyStats(fid){
+  const ps=approvedOf(fid);
+  const living=ps.filter(isLiving).length;
+  const years=ps.map(p=>Number(yearOf(p.born))).filter(y=>y>0);
+  const span=years.length?`${Math.min(...years)}–${Math.max(...years)}`:null;
+  const lifespans=ps.filter(p=>!isLiving(p)).map(p=>Number(yearOf(p.died))-Number(yearOf(p.born))).filter(n=>n>0&&n<130);
+  const avg=lifespans.length?Math.round(lifespans.reduce((a,b)=>a+b,0)/lifespans.length):null;
+  const uset=new Set(); ps.forEach(p=>unionsOf(p.id).forEach(u=>{ if(u.status==='approved') uset.add(u.id); }));
+  return {total:ps.length, living, span, avg, unions:uset.size};
+}
+function renderRecords(){
+  $('#recTitle').textContent=fam().name;
+  const q=state.query.toLowerCase();
+  let list=approvedOf(state.familyId);
+  if(q) list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.bio||'').toLowerCase().includes(q));
+  $('#recCount').textContent=`${list.length} of ${approvedOf(state.familyId).length} kin`;
+  const st=familyStats(state.familyId);
+  $('#recStats').innerHTML=[`<b>${st.total}</b> kin`,`<b>${st.living}</b> living`,`<b>${st.unions}</b> unions`,
+    st.span?`born <b>${esc(st.span)}</b>`:null, st.avg?`avg lifespan <b>${st.avg}</b>`:null].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
+  $('#recGrid').innerHTML = list.map(p=>{
+    const partner=primaryPartner(p.id);
+    const cross = p.familyId!==state.familyId;
+    return `<button class="plate" onclick="openPerson('${htmlId(p.id)}')">
+      ${cross?`<span class="fam-chip">${esc(DB.families[p.familyId].name)}</span>`:''}
+      <div class="av">${esc(initials(p.name))}</div>
+      <h3>${esc(p.name)}</h3>
+      <div class="dates">${isLiving(p)?'<i class="live"></i>':''}${esc(dates(p))}${partner?' · m. '+esc(partner.name.split(' ')[0]):''}</div>
+      <p>${esc(p.bio||'No note recorded yet.')}</p></button>`;
+  }).join('') || `<div class="empty">No kin match "${esc(state.query)}".</div>`;
+}
+
+/* ================================================================
+   RENDER ROUTER
+   ================================================================ */
+function render(){
+  buildSwitcher();
+  const f=fam();
+  if(!hasAccess(f.id)){
+    renderLocked(f);
+    if(!$('#scrim').classList.contains('show')) openGate(f.id);
+    return;
+  }
+  $('#famTitle').textContent=f.name;
+  let crumb='', meta='';
+  if(state.view==='desc'){ const r=P(state.descRoot||f.rootId)||approvedOf(f.id)[0]; crumb='Descendants of'; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span><span>${esc(f.side)}</span>`; $('#famTitle').textContent=r?r.name:f.name; }
+  else if(state.view==='anc'){ const r=P(state.ancFocus||f.pivotId)||approvedOf(f.id)[0]; crumb='Ancestors of'; $('#famTitle').textContent=r?r.name:f.name; meta=`<span>${esc(f.name)} line</span><span>generations climb rightward</span>`; }
+  else { crumb=f.name; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin recorded</span>`; }
+  $('#crumb').textContent=crumb;
+  $('#famMeta').innerHTML=meta;
+
+  const rec=state.view==='records';
+  $('#records').classList.toggle('show',rec);
+  $('#canvas').style.display=rec?'none':'block';
+  $('#zoomers').style.visibility=rec?'hidden':'visible';
+  $('#hintchip').style.display=rec?'none':'block';
+  $('#hintchip').innerHTML = state.view==='anc'
+    ? 'Ancestor chart · the focus person sits on the left, each column climbs one generation. Dashed plates are missing parents — click to add.'
+    : 'Descendant tree · couples share a bar, children hang below. Click anyone to open their record.';
+
+  syncView();
+  updateAdminSeal();
+  if(state.view==='desc') renderDesc(); else if(state.view==='anc') renderAnc(); else renderRecords();
+}
+function renderLocked(f){
+  $('#famTitle').textContent=f.name;
+  $('#crumb').textContent='Private record';
+  $('#famMeta').innerHTML=`<span>${esc(f.side)}</span><span>Password required</span>`;
+  $('#records').classList.remove('show');
+  $('#canvas').style.display='block';
+  $('#zoomers').style.visibility='hidden';
+  $('#hintchip').style.display='block';
+  $('#hintchip').textContent='Enter the family password to open this record.';
+  g.selectAll('*').remove();
+  syncView();
+  updateAdminSeal();
+}
+function buildSwitcher(){
+  $('#switcher').innerHTML=Object.values(DB.families).map(f=>{
+    const locked=!hasAccess(f.id);
+    return `<button class="fam-btn ${f.id===state.familyId?'active':''}" data-fam="${htmlId(f.id)}"><span class="crest">${esc(f.crest)}</span>${esc(f.name)}${f.visibility==='private'?`<span class="lock">${locked?'locked':'open'}</span>`:''}</button>`;
+  }).join('');
+  $('#switcher').querySelectorAll('.fam-btn').forEach(b=>b.onclick=()=>switchFamily(b.dataset.fam));
+}
+function switchFamily(id){
+  if(id===state.familyId) return;
+  const f=DB.families[id];
+  if(!f) return;
+  if(!hasAccess(id)){ openGate(id); return; }
+  state.familyId=id; state.descRoot=null; state.ancFocus=null; state.query=''; $('#search').value=''; closePanel(); render();
+}
+function syncView(){ $('#viewToggle').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view)); }
+
+/* ================================================================
+   PERSON PANEL  (with relationship-aware actions)
+   ================================================================ */
+function openPerson(id,opts={}){
+  const p=P(id); if(!p) return;
+  const partner=primaryPartner(id), parents=parentsOf(id), kids=childrenOf(id).filter(k=>k.status==='approved');
+  const canEdit = state.admin;
+  $('#panel').classList.remove('wide');
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button>
+    <div class="pv-av">${esc(initials(p.name))}</div>
+    <h2>${esc(p.name)}</h2><div class="pv-dates">${esc(dates(p))}</div>
+    <div class="pv-tag">${isLiving(p)?'<i class="dot" style="background:var(--verd)"></i> Living':'In memory'} · ${esc(DB.families[p.familyId].name)} line</div>
+    ${p.status==='pending'?'<div class="pv-tag" style="border-color:var(--rust);color:var(--rust)">Pending approval</div>':''}`;
+
+  let body=`<div class="actions">
+    <button class="act" onclick="openAdd('child','${htmlId(id)}')">${plus()} Add child</button>
+    <button class="act" onclick="openAdd('partner','${htmlId(id)}')">${plus()} Add partner</button>
+    <button class="act full" onclick="openAdd('parent','${htmlId(id)}')">${plus()} Add ${parents.length?'other parent':'parents'}</button>
+    <button class="act" onclick="state.ancFocus='${htmlId(id)}';state.view='anc';render()">Ancestry ↑</button>
+    <button class="act" onclick="state.descRoot='${htmlId(id)}';state.view='desc';render()">Descendants ↓</button>
+    ${canEdit?`<button class="act" onclick="openEdit('${htmlId(id)}')">Edit record</button><button class="act danger" onclick="deletePerson('${htmlId(id)}')">Delete record</button>`:''}
+  </div>`;
+  if(p.bio) body+=`<div class="field"><label>Note</label><p>${esc(p.bio)}</p></div>`;
+  (p.links||[]).forEach(l=>{ const url=safeUrl(l); if(url) body+=`<div class="field"><label>Link</label><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(l)}</a></div>`; });
+  (p.contacts||[]).forEach(c=>{ const email=safeEmail(c); if(email) body+=`<div class="field"><label>Contact</label><a href="mailto:${esc(email)}">${esc(email)}</a></div>`; });
+  const rel=[];
+  parents.forEach(pa=>rel.push(relRow(pa,'Parent')));
+  if(partner) rel.push(relRow(partner, unionsOf(id)[0]?.type==='partnership'?'Partner':'Spouse'));
+  kids.forEach(k=>rel.push(relRow(k,'Child')));
+  if(rel.length) body+=`<div class="field"><label>Relations</label><div class="rel-list">${rel.join('')}</div></div>`;
+  $('#panelBody').innerHTML=body;
+  $('#panelFoot').style.display='none';
+  $('#panel').classList.add('open');
+}
+const plus=()=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>`;
+function relRow(p,role){ return `<button class="rel" onclick="openPerson('${htmlId(p.id)}')"><span class="rav">${esc(initials(p.name))}</span><span class="rn">${esc(p.name)}${p.familyId!==state.familyId?' · '+esc(DB.families[p.familyId].name):''}</span><span class="rr">${esc(role)}</span></button>`; }
+function closePanel(){ $('#panel').classList.remove('open'); }
+
+/* ================================================================
+   ADD  (relationship-aware) — child / partner / parent
+   ================================================================ */
+function openAdd(relation, anchorId){
+  const anchor=anchorId?P(anchorId):null;
+  const titles={child:'Add a child', partner:'Add a partner', parent:'Add a parent', root:'Add kin'};
+  const ctx={
+    child:`New child of ${strong(anchor?.name||'')}${primaryPartner(anchorId)?` and ${esc(primaryPartner(anchorId).name)}`:''}.`,
+    partner:`New spouse or partner of ${strong(anchor?.name||'')}.`,
+    parent: anchor?`New parent of ${strong(anchor.name)}. This extends the line upward — the parent can then gain their own ancestors.`:'',
+    root:'A new unlinked person in this family. Connect relations afterward.'
+  };
+  $('#panel').classList.remove('wide');
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>${esc(titles[relation])}</h2><div class="pv-dates" style="color:var(--muted)">to the ${esc(fam().name)} record</div>`;
+  $('#panelBody').innerHTML=`
+    <p class="hint">${ctx[relation]}</p>
+    <div class="field"><label>Full name</label><input class="finput" id="f_name" placeholder="e.g. Mary Blaker"></div>
+    <div class="row2">
+      <div class="field"><label>Born</label><input class="finput" id="f_born" placeholder="March 8, 1990"></div>
+      <div class="field"><label>Died (blank if living)</label><input class="finput" id="f_died" placeholder="—"></div>
+    </div>
+    <div class="field"><label>Note (optional)</label><textarea class="finput" id="f_bio" placeholder="A line or two…"></textarea></div>
+    <div class="field"><label>Link or contact (optional)</label><input class="finput" id="f_link" placeholder="https://…  or  name@email.com"></div>
+    <input type="hidden" id="f_rel" value="${esc(relation)}"><input type="hidden" id="f_anchor" value="${htmlId(anchorId||'')}">
+    <p class="hint">Submissions join the approval queue. ${state.admin?'As admin, yours are approved instantly.':'An admin reviews before it appears.'}</p>`;
+  $('#panelFoot').style.display='flex';
+  $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="closePanel()">Cancel</button><button class="btn-fill" onclick="submitKin()">${state.admin?'Add to tree':'Submit for approval'}</button>`;
+  $('#panel').classList.add('open'); setTimeout(()=>$('#f_name')?.focus(),320);
+}
+function submitKin(){
+  const name=$('#f_name').value.trim(); if(!name){ toast('A name is needed.'); return; }
+  const rel=$('#f_rel').value, anchorId=$('#f_anchor').value, raw=$('#f_link').value.trim();
+  const email=raw?safeEmail(raw):null, url=raw?safeUrl(raw):null;
+  if(raw && !email && !url){ toast('Use an http/https link or a valid email address.'); return; }
+  const born=parseDateValue($('#f_born').value), died=parseDateValue($('#f_died').value);
+  if($('#f_born').value.trim() && born==null){ toast('Born must be a year or date.'); return; }
+  if($('#f_died').value.trim() && died==null){ toast('Died must be a year or date.'); return; }
+  const id='x'+(++_pid)+Date.now().toString().slice(-4);
+  const np={ id, familyId:state.familyId, name, born,
+    died, bio:$('#f_bio').value.trim(),
+    links:url?[url]:[], contacts:email?[email]:[], childOf:null, status: state.admin?'approved':'pending' };
+  DB.persons[id]=np;
+  // wire the relationship
+  if(rel==='child' && anchorId){ let u=unionsOf(anchorId).find(u=>u.status==='approved'); if(!u){ u={id:'u'+(++_uid)+Date.now().toString().slice(-3),a:anchorId,b:null,type:'marriage',status:'approved'}; DB.unions[u.id]=u; } np.childOf=u.id; }
+  else if(rel==='partner' && anchorId){ const uid='u'+(++_uid)+Date.now().toString().slice(-3); DB.unions[uid]={id:uid,a:anchorId,b:id,type:'marriage',status:'approved'}; }
+  else if(rel==='parent' && anchorId){
+    const child=P(anchorId);
+    if(child.childOf){ const u=U(child.childOf); if(!u.a) u.a=id; else if(!u.b) u.b=id; else { toast('Both parents already recorded.'); } }
+    else { const uid='u'+(++_uid)+Date.now().toString().slice(-3); DB.unions[uid]={id:uid,a:id,b:null,type:'marriage',status:'approved'}; child.childOf=uid; }
+  }
+  closePanel(); saveDB();
+  if(state.admin){ toast(`${strong(name)} added.`); render(); }
+  else { toast(`${strong(name)} submitted — awaiting approval.`); updateAdminSeal(); }
+}
+
+/* ---- edit (admin) ---- */
+function openEdit(id){
+  const p=P(id);
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Edit record</h2><div class="pv-dates" style="color:var(--muted)">${esc(p.name)}</div>`;
+  $('#panelBody').innerHTML=`
+    <div class="field"><label>Full name</label><input class="finput" id="e_name" value="${esc(p.name)}"></div>
+    <div class="row2"><div class="field"><label>Born</label><input class="finput" id="e_born" value="${esc(p.born||'')}"></div>
+    <div class="field"><label>Died</label><input class="finput" id="e_died" value="${esc(p.died||'')}"></div></div>
+    <div class="field"><label>Note</label><textarea class="finput" id="e_bio">${esc(p.bio||'')}</textarea></div>`;
+  $('#panelFoot').style.display='flex';
+  $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="openPerson('${htmlId(id)}')">Cancel</button><button class="btn-fill" onclick="saveEdit('${htmlId(id)}')">Save changes</button>`;
+}
+function saveEdit(id){
+  const born=parseDateValue($('#e_born').value), died=parseDateValue($('#e_died').value);
+  if($('#e_born').value.trim() && born==null){ toast('Born must be a year or date.'); return; }
+  if($('#e_died').value.trim() && died==null){ toast('Died must be a year or date.'); return; }
+  const p=P(id); p.name=$('#e_name').value.trim()||p.name; p.born=born; p.died=died; p.bio=$('#e_bio').value.trim(); saveDB(); toast(`${strong(p.name)} updated.`); openPerson(id); render();
+}
+/* ---- delete (admin) — detaches unions and re-roots the family if needed ---- */
+function deletePerson(id){
+  const p=P(id); if(!p || !state.admin) return;
+  if(settings.confirmDanger && !confirm(`Remove ${p.name} from the record? Their unions are detached; children remain.`)) return;
+  unionsOf(id).forEach(u=>{
+    if(u.a===id) u.a=null; if(u.b===id) u.b=null;
+    if(!u.a && !u.b){ Object.values(DB.persons).forEach(c=>{ if(c.childOf===u.id) c.childOf=null; }); delete DB.unions[u.id]; }
+  });
+  delete DB.persons[id];
+  const f=DB.families[p.familyId];
+  if(f){ const first=(approvedOf(f.id)[0]||{}).id||null;
+    if(f.rootId===id) f.rootId=first; if(f.pivotId===id) f.pivotId=first; }
+  if(state.descRoot===id) state.descRoot=null;
+  if(state.ancFocus===id) state.ancFocus=null;
+  saveDB(); closePanel(); render(); toast(`${strong(p.name)} removed from the record.`);
+}
+
+/* ================================================================
+   DIRECTORY  (browse / search families · request a new family)
+   ================================================================ */
+function openDirectory(){
+  $('#panel').classList.add('wide','open');
+  $('#panelFoot').style.display='none';
+  renderDirectory();
+}
+function renderDirectory(){
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Families on Kin</h2><div class="pv-dates" style="color:var(--muted)">Browse, open, or request a new line</div>`;
+  const tabs=`<div class="tabs">
+    <button class="${state.dirTab==='browse'?'active':''}" onclick="state.dirTab='browse';renderDirectory()">Browse</button>
+    <button class="${state.dirTab==='new'?'active':''}" onclick="state.dirTab='new';renderDirectory()">Request a family</button></div>`;
+  if(state.dirTab==='browse'){
+    const q=($('#dirSearch')?.value||'').toLowerCase();
+    const list=Object.values(DB.families).filter(f=>f.name.toLowerCase().includes(q));
+    $('#panelBody').innerHTML=tabs+`
+      <div class="search" style="width:100%; margin-bottom:14px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="dirSearch" placeholder="Search families…" oninput="renderDirectory()" value="${esc(q)}"></div>
+      ${list.map(f=>{ const locked=!hasAccess(f.id);
+        return `<div class="dircard"><div class="dcrest">${esc(f.crest)}</div>
+          <div><h4>${esc(f.name)}</h4><div class="dsub">${approvedOf(f.id).length} kin · ${f.visibility==='private'?'private':'public'} · ${esc(f.side)}</div></div>
+          <button class="daction ${locked?'locked':''}" onclick="${locked?`requestJoin('${htmlId(f.id)}')`:`openFamily('${htmlId(f.id)}')`}">${locked?'Request access':'Open'}</button></div>`;
+      }).join('')}`;
+    setTimeout(()=>{ const s=$('#dirSearch'); if(s){ s.focus(); s.setSelectionRange(s.value.length,s.value.length);} },0);
+  } else {
+    $('#panelBody').innerHTML=tabs+`
+      <p class="hint">Every family uses the same structure. Name yours and, once an admin approves, it appears in the directory with its first ancestor ready to record.</p>
+      <div class="field"><label>Family name</label><input class="finput" id="nf_name" placeholder="e.g. Davison"></div>
+      <div class="field"><label>This line is…</label><input class="finput" id="nf_side" placeholder="Paternal line, Maternal line…"></div>
+      <div class="field"><label>Visibility</label><select class="finput" id="nf_vis"><option value="public">Public — anyone can browse</option><option value="private">Private — password to open</option></select></div>
+      <div class="field"><label>A note for the admin (optional)</label><textarea class="finput" id="nf_note" placeholder="Why you’re starting this line…"></textarea></div>
+      <button class="btn-fill" style="width:100%" onclick="requestFamily()">Request this family</button>`;
+  }
+}
+function openFamily(id){ const f=DB.families[id]; if(!f) return; if(!hasAccess(id)){ openGate(id); return; } unlocked.add(id); rememberUnlocked(); state.familyId=id; state.descRoot=null; state.ancFocus=null; closePanel(); render(); toast(`${strong(f.name)} opened.`); }
+function requestJoin(fid){ const f=DB.families[fid]; if(!f) return; DB.joinRequests.push({id:'jr'+Date.now(), family:fid, by:'you@kin.app', note:'Requested from the directory.', status:'pending'}); saveDB(); toast(`Access request sent to ${strong(f.name)} admins.`); updateAdminSeal(); }
+function requestFamily(){ const name=$('#nf_name').value.trim(); if(!name){ $('#nf_name').focus(); return; } DB.familyRequests.push({id:'fr'+Date.now(), name, by:'you@kin.app', note:$('#nf_note').value.trim(), vis:$('#nf_vis').value, side:$('#nf_side').value.trim(), status:'pending'}); saveDB(); toast(`${strong(name)} requested — an admin will review it.`); updateAdminSeal(); closePanel(); }
+
+/* ================================================================
+   ADMIN CONSOLE  (pending kin · family requests · join requests · members & roles)
+   ================================================================ */
+function updateAdminSeal(){ const n=totalAdminCount(); const s=$('#adminSeal'); s.style.display=(state.admin&&n)?'grid':'none'; s.textContent=n; }
+function toggleAdmin(){
+  if(!state.admin){ openAdminGate(); return; }
+  state.admin=false;
+  $('#adminBtn').classList.remove('on');
+  closePanel();
+  buildSwitcher();
+  updateAdminSeal();
+  render();
+  toast('Admin logged out.');
+}
+function openAdminGate(){
+  $('#modal').innerHTML=`<div class="clasp"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2l7 4v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6l7-4z"/><path d="M9 12l2 2 4-5"/></svg></div>
+    <h2>Admin login</h2><p class="sub">Enter the admin passcode to manage records, approvals, and roles.</p>
+    <input class="finput" id="adminPass" type="password" placeholder="Admin passcode" autocomplete="off"><div class="err" id="adminErr"></div>
+    <div style="display:flex; gap:10px; margin-top:6px"><button class="btn-ghost" onclick="closeGate()">Cancel</button><button class="btn-fill" onclick="tryAdmin()">Log in</button></div>`;
+  $('#scrim').classList.add('show');
+  setTimeout(()=>$('#adminPass').focus(),100);
+  $('#adminPass').onkeydown=e=>{ if(e.key==='Enter') tryAdmin(); };
+}
+async function tryAdmin(){
+  const input=$('#adminPass'), err=$('#adminErr');
+  const digest = await passwordDigest('admin',input.value);
+  if(digest && digest===ADMIN_PASSWORD_HASH){
+    state.admin=true;
+    unlocked.add(state.familyId); rememberUnlocked();
+    closeGate();
+    $('#adminBtn').classList.add('on');
+    buildSwitcher();
+    updateAdminSeal();
+    openAdmin();
+    render();
+    toast('Admin console open.');
+  } else {
+    err.textContent=window.crypto?.subtle?'That admin passcode does not match.':'Admin login requires HTTPS.';
+    input.value='';
+  }
+}
+function openAdmin(){ $('#panel').classList.add('wide','open'); $('#panelFoot').style.display='none'; renderAdmin(); }
+function renderAdmin(){
+  const pk=pendingKin(state.familyId), fr=DB.familyRequests.filter(r=>r.status==='pending'), jr=DB.joinRequests.filter(r=>r.status==='pending');
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Admin console</h2><div class="pv-dates" style="color:var(--muted)">${esc(fam().name)} · you are owner</div>`;
+  const tab=(id,label,n)=>`<button class="${state.adminTab===id?'active':''}" onclick="state.adminTab='${id}';renderAdmin()">${label}${n?`<span class="tseal">${n}</span>`:''}</button>`;
+  const tabs=`<div class="tabs">${tab('pending','Kin',pk.length)}${tab('families','Families',fr.length)}${tab('join','Access',jr.length)}${tab('members','Roles',0)}</div>`;
+  let body='';
+  if(state.adminTab==='pending'){
+    body = pk.length? pk.map(p=>{ const par=parentsOf(p.id)[0];
+      return `<div class="card"><h4>${esc(p.name)}</h4><div class="sub">${esc(dates(p))}${par?' · child of '+esc(par.name):''}</div>
+        <p>${esc(p.bio||'No note.')}</p><div class="row"><button class="approve" onclick="approveKin('${htmlId(p.id)}')">Approve</button><button class="decline" onclick="declineKin('${htmlId(p.id)}')">Decline</button></div></div>`;
+    }).join('') : '<div class="empty">No kin awaiting approval.</div>';
+  } else if(state.adminTab==='families'){
+    body = fr.length? fr.map(r=>`<div class="card"><h4>${esc(r.name)}</h4><div class="sub">requested by ${esc(r.by)}${r.vis?' · '+esc(r.vis):''}</div>
+      <p>${esc(r.note||'No note.')}</p><div class="row"><button class="approve" onclick="approveFamily('${htmlId(r.id)}')">Create family</button><button class="decline" onclick="rejectReq('familyRequests','${htmlId(r.id)}')">Decline</button></div></div>`).join('')
+      : '<div class="empty">No family requests.</div>';
+  } else if(state.adminTab==='join'){
+    body = jr.length? jr.map(r=>`<div class="card"><h4>${esc(DB.families[r.family]?.name||r.family)}</h4><div class="sub">${esc(r.by)}</div>
+      <p>${esc(r.note||'')}</p><div class="row"><button class="approve" onclick="rejectReq('joinRequests','${htmlId(r.id)}',true)">Grant access</button><button class="decline" onclick="rejectReq('joinRequests','${htmlId(r.id)}')">Deny</button></div></div>`).join('')
+      : '<div class="empty">No access requests.</div>';
+  } else {
+    const users=DB.users.filter(u=>u.roles[state.familyId]);
+    body=`<p class="hint">Roles for the ${esc(fam().name)} record. Owners manage everything, editors add and edit, viewers read only.</p>`+
+      users.map(u=>`<div class="memrow"><div class="mav">${esc(initials(u.name))}</div><div><div class="mn">${esc(u.name)}</div><div class="me">${esc(u.email)}</div></div>
+        <div class="roleseg" style="margin-left:auto">${['owner','editor','viewer'].map(r=>`<button class="${u.roles[state.familyId]===r?'on':''}" onclick="setRole('${htmlId(u.id)}','${r}')">${r}</button>`).join('')}</div></div>`).join('')+
+      `<div class="divlabel">Invite</div><div class="field"><input class="finput" id="inv_email" placeholder="name@email.com"></div><button class="btn-fill" style="width:100%" onclick="invite()">Send invite</button>`;
+  }
+  $('#panelBody').innerHTML=tabs+body;
+}
+function approveKin(id){ P(id).status='approved'; saveDB(); toast(`${strong(P(id).name)} approved.`); renderAdmin(); render(); }
+function declineKin(id){
+  const p=P(id); if(!p) return;
+  if(settings.confirmDanger && !confirm(`Decline and remove ${p.name}?`)) return;
+  unionsOf(id).forEach(u=>{ if(u.a===id) u.a=null; if(u.b===id) u.b=null;
+    if(!u.a && !u.b){ Object.values(DB.persons).forEach(c=>{ if(c.childOf===u.id) c.childOf=null; }); delete DB.unions[u.id]; } });
+  delete DB.persons[id]; saveDB(); toast(`${esc(p.name)} declined.`); renderAdmin(); updateAdminSeal();
+}
+function approveFamily(rid){ const r=DB.familyRequests.find(x=>x.id===rid); r.status='approved';
+  const key=(r.name.toLowerCase().replace(/[^a-z0-9]/g,'')||'family')+Date.now().toString().slice(-3);
+  DB.families[key]={id:key,name:r.name,crest:r.name[0].toUpperCase(),side:r.side||'Family line',visibility:r.vis||'public',passwordHash:null,rootId:key+'_root',pivotId:key+'_root',desc:'Newly created family.'};
+  person(key+'_root',key,r.name+' ancestor',null,null,'The first entry. Add kin from here.');
+  unlocked.add(key); rememberUnlocked(); saveDB(); toast(`${strong(r.name)} created.`); renderAdmin(); render(); }
+function rejectReq(table,id,grant){ const r=DB[table].find(x=>x.id===id); if(!r) return; r.status=grant?'granted':'declined'; if(grant&&r.family){ unlocked.add(r.family); rememberUnlocked(); } saveDB(); toast(grant?'Access granted.':'Request closed.'); renderAdmin(); updateAdminSeal(); }
+function setRole(uid,role){ DB.users.find(u=>u.id===uid).roles[state.familyId]=role; saveDB(); toast('Role updated.'); renderAdmin(); }
+function invite(){ const e=safeEmail($('#inv_email').value); if(!e){ toast('Enter a valid email address.'); return; } DB.users.push({id:'u'+Date.now(),name:e.split('@')[0],email:e,roles:{[state.familyId]:'viewer'}}); saveDB(); toast(`Invite sent to ${strong(e)}.`); renderAdmin(); }
+
+/* ================================================================
+   SETTINGS PANEL  — appearance · charts · behaviour · data
+   ================================================================ */
+function openSettings(){ $('#panel').classList.add('wide','open'); $('#panelFoot').style.display='none'; renderSettings(); }
+function segRow(label,desc,key,opts){
+  return `<div class="setrow"><div><div class="sl">${label}</div>${desc?`<div class="sd">${desc}</div>`:''}</div>
+    <div class="roleseg">${opts.map(o=>`<button class="${String(settings[key])===o.v?'on':''}" onclick="setOpt('${key}','${o.v}')">${o.l}</button>`).join('')}</div></div>`;
+}
+function setOpt(k,v){
+  if(v==='true') v=true; else if(v==='false') v=false; else if(/^\d+$/.test(v)) v=Number(v);
+  settings[k]=v; saveSettings(); applySettings(); renderSettings();
+  if(k==='autosave' && v===true) saveDB();
+  render();
+}
+function renderSettings(){
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Settings</h2><div class="pv-dates" style="color:var(--muted)">Every option persists in this browser</div>`;
+  const t=(v,l)=>({v,l}); const onoff=[t('true','On'),t('false','Off')];
+  $('#panelBody').innerHTML=`
+    <div class="divlabel">Appearance</div>
+    ${segRow('Theme','','theme',[t('dark','Dark'),t('light','Light')])}
+    ${segRow('Accent','Gold is the classic Kin look.','accent',[t('gold','Gold'),t('copper','Copper'),t('iris','Iris'),t('rose','Rose')])}
+    ${segRow('Background glow','The soft radial light behind the chart.','glow',onoff)}
+    ${segRow('Animations','Reveal transitions and motion.','anim',onoff)}
+    <div class="divlabel">Charts</div>
+    ${segRow('Plate size','','plate',[t('compact','S'),t('standard','M'),t('roomy','L')])}
+    ${segRow('Ancestor generations','Columns shown in the ancestor chart.','ancGens',[t('2','2'),t('3','3'),t('4','4'),t('5','5')])}
+    ${segRow('Connectors','Line style in the descendant tree.','links',[t('curved','Curved'),t('stepped','Stepped')])}
+    ${segRow('Dates on plates','','showDates',onoff)}
+    ${segRow('Living marker','Green edge and dot for living kin.','livingMarker',onoff)}
+    ${segRow('Year-only dates','Show 1990 instead of March 8, 1990.','yearOnly',onoff)}
+    <div class="divlabel">Behaviour</div>
+    ${segRow('Autosave','Keep every change in this browser.','autosave',onoff)}
+    ${segRow('Confirm removals','Ask before declining or deleting.','confirmDanger',onoff)}
+    <div class="divlabel">Data</div>
+    <div class="actions" style="margin-top:4px; margin-bottom:0">
+      <button class="act" onclick="exportJSON()">Export JSON</button>
+      <button class="act" onclick="document.getElementById('importFile').click()">Import JSON</button>
+      <button class="act" onclick="exportGEDCOM()">Export GEDCOM</button>
+      <button class="act danger" onclick="resetData()">Reset saved data</button>
+    </div>
+    <p class="hint" style="margin-top:12px">JSON backs up every family, person, and union. GEDCOM exports the current family for other genealogy software. Reset restores the built-in record.</p>
+    <div class="divlabel">About</div>
+    <p class="hint">Kin models genealogy as a graph — persons and unions — so any line can grow upward, downward, or sideways. Open source on <a href="https://github.com/AlfieDavis/Kin" target="_blank" rel="noopener noreferrer" style="color:var(--verd)">GitHub</a>.</p>`;
+}
+
+/* ---- data tools ---- */
+function download(name,text,type){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },400);
+}
+function exportJSON(){
+  download('kin-backup.json', JSON.stringify({v:1, seq:[_pid,_uid], families:DB.families, persons:DB.persons,
+    unions:DB.unions, users:DB.users, familyRequests:DB.familyRequests, joinRequests:DB.joinRequests}, null, 2), 'application/json');
+  toast('Backup downloaded.');
+}
+function importJSON(file){
+  const r=new FileReader();
+  r.onload=()=>{ try{
+      const d=JSON.parse(r.result);
+      if(!d || typeof d.families!=='object' || typeof d.persons!=='object' || typeof d.unions!=='object') throw new Error('shape');
+      DB.families=d.families; DB.persons=d.persons; DB.unions=d.unions;
+      DB.users=Array.isArray(d.users)?d.users:DB.users; DB.familyRequests=d.familyRequests||[]; DB.joinRequests=d.joinRequests||[];
+      [_pid,_uid]=Array.isArray(d.seq)?d.seq:[9000,9000];
+      if(!DB.families[state.familyId]) state.familyId=Object.keys(DB.families)[0];
+      state.descRoot=null; state.ancFocus=null;
+      saveDB(); closePanel(); render(); toast('Record imported.');
+    }catch{ toast('That file is not a Kin backup.'); } };
+  r.readAsText(file);
+}
+function resetData(){
+  if(settings.confirmDanger && !confirm('Discard saved changes and restore the built-in record?')) return;
+  try{ localStorage.removeItem(DB_KEY); }catch{}
+  location.reload();
+}
+function exportGEDCOM(){
+  const fid=state.familyId, f=fam();
+  const ps=[...approvedOf(fid)]; const inSet=new Set(ps.map(p=>p.id));
+  Object.values(DB.unions).forEach(u=>{ if(u.status!=='approved') return;
+    if((u.a&&inSet.has(u.a))||(u.b&&inSet.has(u.b)))
+      [u.a,u.b].forEach(pid=>{ const p=pid&&P(pid); if(p && !inSet.has(pid) && p.status==='approved'){ ps.push(p); inSet.add(pid); } });
+  });
+  const iref={}; ps.forEach((p,i)=>iref[p.id]='@I'+(i+1)+'@');
+  const unions=Object.values(DB.unions).filter(u=>u.status==='approved' && ((u.a&&inSet.has(u.a))||(u.b&&inSet.has(u.b))));
+  const fref={}; unions.forEach((u,i)=>fref[u.id]='@F'+(i+1)+'@');
+  const L=['0 HEAD','1 SOUR Kin','1 GEDC','2 VERS 5.5.1','2 FORM LINEAGE-LINKED','1 CHAR UTF-8'];
+  ps.forEach(p=>{
+    const parts=String(p.name).trim().split(/\s+/); const sur=parts.length>1?parts.pop():'';
+    L.push(`0 ${iref[p.id]} INDI`, `1 NAME ${parts.join(' ')} /${sur}/`);
+    if(p.born!=null){ L.push('1 BIRT', `2 DATE ${p.born}`); }
+    if(p.died!=null){ L.push('1 DEAT', `2 DATE ${p.died}`); }
+    if(p.bio) L.push(`1 NOTE ${String(p.bio).replace(/\r?\n/g,' ')}`);
+    if(p.childOf && fref[p.childOf]) L.push(`1 FAMC ${fref[p.childOf]}`);
+    unionsOf(p.id).forEach(u=>{ if(fref[u.id]) L.push(`1 FAMS ${fref[u.id]}`); });
+  });
+  unions.forEach(u=>{
+    L.push(`0 ${fref[u.id]} FAM`);
+    if(u.a&&iref[u.a]) L.push(`1 HUSB ${iref[u.a]}`);
+    if(u.b&&iref[u.b]) L.push(`1 WIFE ${iref[u.b]}`);
+    Object.values(DB.persons).forEach(c=>{ if(c.childOf===u.id && iref[c.id]) L.push(`1 CHIL ${iref[c.id]}`); });
+  });
+  L.push('0 TRLR');
+  download(`kin-${fid}.ged`, L.join('\r\n'), 'text/plain');
+  toast(`GEDCOM for ${strong(f.name)} downloaded.`);
+}
+
+/* ================================================================
+   RELATIONSHIP FINDER — shortest path through the graph + kinship label
+   ================================================================ */
+function neighborEdges(pid){
+  const out=[];
+  parentsOf(pid).forEach(p=>out.push({id:p.id, rel:'parent'}));
+  childrenOf(pid).filter(k=>k.status==='approved').forEach(k=>out.push({id:k.id, rel:'child'}));
+  unionsOf(pid).filter(u=>u.status==='approved').forEach(u=>{ const o=partnerIn(pid,u);
+    if(o && P(o) && P(o).status==='approved') out.push({id:o, rel:u.type==='partnership'?'partner':'spouse'}); });
+  return out;
+}
+function findPath(a,b){
+  const prev={[a]:null}; const q=[a];
+  while(q.length){
+    const cur=q.shift();
+    for(const e of neighborEdges(cur)){
+      if(e.id in prev) continue;
+      prev[e.id]={from:cur, rel:e.rel};
+      if(e.id===b){ const path=[]; let n=b; while(n){ const pr=prev[n]; path.unshift({id:n, rel:pr?pr.rel:null}); n=pr?pr.from:null; } return path; }
+      q.push(e.id);
+    }
+  }
+  return null;
+}
+function ancestorDepths(pid){
+  const map={}; const q=[[pid,0]];
+  while(q.length){ const [id,d]=q.shift(); if(map[id]!==undefined) continue; map[id]=d; parentsOf(id).forEach(p=>q.push([p.id,d+1])); }
+  return map;
+}
+const ancWord = d=> d===1?'parent' : d===2?'grandparent' : 'great-'.repeat(d-2)+'grandparent';
+const ordinal = n=>{ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
+function kinshipLabel(a,b,path){
+  const A=esc(P(a).name.split(' ')[0]), B=esc(P(b).name.split(' ')[0]);
+  if(path.length===2 && (path[1].rel==='spouse'||path[1].rel==='partner'))
+    return `${A} and ${B} are ${path[1].rel==='partner'?'partners':'spouses'}.`;
+  const da=ancestorDepths(a), db=ancestorDepths(b);
+  if(db[a]!==undefined) return `${A} is ${B}’s ${ancWord(db[a])}.`;
+  if(da[b]!==undefined) return `${B} is ${A}’s ${ancWord(da[b])}.`;
+  let best=null;
+  for(const id in da) if(db[id]!==undefined){ const m=da[id], n=db[id]; if(!best || m+n<best.m+best.n) best={m,n}; }
+  if(best){
+    const k=Math.min(best.m,best.n), r=Math.abs(best.m-best.n);
+    if(k===1&&r===0) return `${A} and ${B} are siblings.`;
+    if(k===1) return `${A} and ${B} are ${r>1?'great-'.repeat(r-1):''}aunt/uncle and niece/nephew.`;
+    return `${A} and ${B} are ${ordinal(k-1)} cousins${r?`, ${r} time${r>1?'s':''} removed`:''}.`;
+  }
+  return path.some(s=>s.rel==='spouse'||s.rel==='partner')
+    ? `${A} and ${B} are connected by marriage.` : `${A} and ${B} are connected in the record.`;
+}
+function personOptions(sel){
+  return `<option value="">— pick a person —</option>`+Object.values(DB.families).filter(f=>hasAccess(f.id)).map(f=>
+    `<optgroup label="${esc(f.name)}">${approvedOf(f.id).map(p=>`<option value="${htmlId(p.id)}"${p.id===sel?' selected':''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('');
+}
+function openRelate(){ $('#panel').classList.add('wide','open'); $('#panelFoot').style.display='none'; renderRelate(); }
+function renderRelate(){
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>How are we related?</h2><div class="pv-dates" style="color:var(--muted)">Trace the shortest path through the record</div>`;
+  $('#panelBody').innerHTML=`
+    <div class="field"><label>From</label><select class="finput" id="relA">${personOptions(state.relA)}</select></div>
+    <div class="field"><label>To</label><select class="finput" id="relB">${personOptions(state.relB)}</select></div>
+    <button class="btn-fill" style="width:100%" onclick="traceRelation()">Trace relation</button>
+    <div id="relResult" style="margin-top:18px"></div>`;
+}
+function traceRelation(){
+  const a=$('#relA').value, b=$('#relB').value; state.relA=a; state.relB=b;
+  const out=$('#relResult');
+  if(!a || !b){ out.innerHTML='<div class="empty">Pick two people first.</div>'; return; }
+  if(a===b){ out.innerHTML='<div class="empty">That is the same person twice.</div>'; return; }
+  const path=findPath(a,b);
+  if(!path){ out.innerHTML='<div class="empty">No recorded connection — yet.<br>Add the missing kin and trace again.</div>'; return; }
+  const stepWord={parent:'their parent', child:'their child', spouse:'their spouse', partner:'their partner'};
+  const rows=path.map((s,i)=>{ const p=P(s.id);
+    const pre=i?`<div class="pathstep">${stepWord[s.rel]||esc(s.rel)}</div>`:'';
+    return pre+relRow(p, i===0?'From': i===path.length-1?'To':''); }).join('');
+  out.innerHTML=`<div class="field"><label>Relationship</label><p>${kinshipLabel(a,b,path)}</p></div>
+    <div class="field"><label>Path · ${path.length-1} step${path.length>2?'s':''}</label><div class="rel-list">${rows}</div></div>`;
+}
+
+/* ================================================================
+   GATE
+   ================================================================ */
+function openGate(id){ const f=DB.families[id];
+  $('#modal').innerHTML=`<div class="clasp"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+    <h2><span class="crest-lg">${esc(f.crest)}</span> ${esc(f.name)} is private</h2><p class="sub">${esc(f.side)}. Enter the family password, or request access from the directory.</p>
+    <input class="finput" id="gatePass" type="password" placeholder="Password" autocomplete="off"><div class="err" id="gateErr"></div>
+    <div style="display:flex; gap:10px; margin-top:6px"><button class="btn-ghost" onclick="closeGate()">Cancel</button><button class="btn-fill" onclick="tryGate('${htmlId(id)}')">Open record</button></div>
+    <button class="btn-ghost" style="width:100%; margin-top:10px" onclick="openAdminGate()">Admin login</button>`;
+  $('#scrim').classList.add('show'); setTimeout(()=>$('#gatePass').focus(),100);
+  $('#gatePass').onkeydown=e=>{ if(e.key==='Enter') tryGate(id); };
+}
+async function tryGate(id){
+  const f=DB.families[id], input=$('#gatePass'), err=$('#gateErr');
+  if(!f?.passwordHash){ err.textContent='Access for this family has not been configured.'; return; }
+  const digest = await passwordDigest(id,input.value);
+  if(digest && digest===f.passwordHash){ unlocked.add(id); rememberUnlocked(); closeGate(); state.familyId=id; state.descRoot=null; state.ancFocus=null; closePanel(); render(); toast(`${strong(DB.families[id].name)} opened.`); }
+  else { err.textContent=window.crypto?.subtle?'That password does not match.':'Private records require HTTPS.'; input.value=''; }
+}
+function closeGate(){ $('#scrim').classList.remove('show'); }
+
+/* wiring */
+$('#addBtn').onclick=()=>openAdd('root',null);
+$('#browseBtn').onclick=openDirectory;
+$('#adminBtn').onclick=toggleAdmin;
+$('#settingsBtn').onclick=openSettings;
+$('#relateBtn').onclick=openRelate;
+$('#importFile').onchange=e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; };
+$('#scrim').onclick=e=>{ if(e.target.id==='scrim') closeGate(); };
+$('#search').oninput=e=>{ state.query=e.target.value; if(state.view!=='records'){ state.view='records'; } render(); };
+$('#viewToggle').querySelectorAll('button').forEach(b=>b.onclick=()=>{ state.view=b.dataset.view; render(); });
+$('#zoomers').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.z==='fit') fitView(); else svg.transition().duration(250).call(zoom.scaleBy,b.dataset.z==='in'?1.3:1/1.3); });
+svg.on('click',()=>closePanel());
+document.onkeydown=e=>{
+  const typing=/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||'');
+  if(e.key==='Escape'){ closePanel(); closeGate(); if(typing) document.activeElement.blur(); }
+  else if(e.key==='/' && !typing){ e.preventDefault(); $('#search').focus(); }
+};
+window.onresize=()=>{ if(state.view!=='records') fitView(); };
+render();
+</script>
+</body>
+</html>
