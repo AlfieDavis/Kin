@@ -4,7 +4,7 @@
 <!-- Kin - genealogy prototype (graph model: persons + unions). Single file, in-memory. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://lh3.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://apis.google.com; frame-src 'self' https://epoch-d1d71.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://apis.google.com; frame-src 'self' https://epoch-d1d71.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="Kin — a family record. Browse genealogy as a graph: descendant trees, ancestor charts, and a relationship finder.">
 <meta name="color-scheme" content="dark light">
@@ -236,6 +236,32 @@ html[data-anim="off"] *{animation:none!important; transition:none!important}
 .statchips{display:flex; gap:8px; flex-wrap:wrap; max-width:1200px; margin:0 auto 20px}
 .statchips span{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); background:var(--ink-2); border:1px solid var(--line); padding:6px 11px; border-radius:8px}
 .statchips b{color:var(--gold); font-weight:500}
+
+/* ---------- welcome (first visit) ---------- */
+.welcome{position:fixed; inset:0; z-index:55; display:none; place-items:center; padding:24px; overflow:auto;
+  background:radial-gradient(900px 620px at 50% 18%, rgba(201,168,99,.09), transparent 62%), rgba(13,14,17,.9); backdrop-filter:blur(12px)}
+.welcome.show{display:grid}
+html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 18%, rgba(201,168,99,.16), transparent 62%), rgba(243,238,226,.93)}
+.w-card{max-width:470px; text-align:center; animation:wrise .7s cubic-bezier(.2,.8,.25,1) both}
+@keyframes wrise{from{opacity:0; transform:translateY(20px)}to{opacity:1; transform:none}}
+.w-glyph{font-family:'Grenze Gotisch',serif; font-weight:600; font-size:68px; color:var(--gold); line-height:1; text-shadow:0 6px 34px rgba(201,168,99,.32)}
+.w-sub{font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.34em; text-transform:uppercase; color:var(--muted); margin:6px 0 22px}
+.w-card h1{font-family:'Fraunces',serif; font-weight:500; font-size:29px; line-height:1.2; margin:0 0 12px}
+.w-card p{color:var(--bone-dim); font-size:14.5px; line-height:1.65; margin:0 auto 26px; max-width:380px}
+.w-actions{display:flex; flex-direction:column; gap:10px; max-width:290px; margin:0 auto}
+.w-actions .btn-primary{justify-content:center; padding:12px; font-size:14px}
+.w-actions .btn-ghost{padding:11px}
+.w-hint{margin-top:24px; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--muted); text-transform:uppercase}
+
+/* ---------- onboarding nudge for a young record ---------- */
+.onboard{position:absolute; left:50%; bottom:92px; transform:translateX(-50%); z-index:5; display:none;
+  background:linear-gradient(180deg,var(--ink-2),var(--ink)); border:1px solid var(--gold-soft); border-radius:14px;
+  padding:16px 20px; max-width:430px; text-align:center; box-shadow:var(--shadow)}
+.onboard h3{font-family:'Fraunces',serif; font-weight:500; margin:0 0 4px; font-size:16px}
+.onboard p{font-size:12.5px; color:var(--bone-dim); margin:0 0 12px; line-height:1.5}
+.onboard .row{display:flex; gap:8px; justify-content:center}
+.onboard .row button{padding:8px 13px; border-radius:9px; background:var(--ink-3); border:1px solid var(--line); font-size:12.5px; color:var(--bone-dim); transition:.15s}
+.onboard .row button:hover{border-color:var(--gold-soft); color:var(--bone)}
 </style>
 </head>
 <body>
@@ -283,6 +309,7 @@ html[data-anim="off"] *{animation:none!important; transition:none!important}
     <button class="ghostbtn" id="relateBtn" title="Trace how two people are related">⇄ How related?</button>
   </div>
   <div class="hintchip" id="hintchip"></div>
+  <div class="onboard" id="onboard"></div>
   <div class="records" id="records"><div class="rec-title"><h2 id="recTitle">Blaker</h2><span id="recCount"></span></div><div class="statchips" id="recStats"></div><div class="rec-tools" id="recTools"></div><div class="rec-grid" id="recGrid"></div></div>
 </div>
 
@@ -290,6 +317,21 @@ html[data-anim="off"] *{animation:none!important; transition:none!important}
 <div class="scrim" id="scrim"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+
+<div class="welcome" id="welcome" role="dialog" aria-modal="true" aria-label="Welcome to Kin">
+  <div class="w-card">
+    <div class="w-glyph">Kin</div>
+    <div class="w-sub">Family Record</div>
+    <h1>Every family is a graph.</h1>
+    <p>Ancestors above, descendants below, and the paths between — kept as a living record your whole family tends together. Additions are reviewed by your family's own admins.</p>
+    <div class="w-actions">
+      <button class="btn-primary" onclick="dismissWelcome();openAccount()">Sign in or create an account</button>
+      <button class="btn-ghost" onclick="dismissWelcome()">Explore the demo record</button>
+      <button class="btn-ghost" onclick="dismissWelcome();openDirectory()">Browse families</button>
+    </div>
+    <div class="w-hint">Graph charts · relationship finder · GEDCOM export</div>
+  </div>
+</div>
 
 <script>
 /* ================================================================
@@ -436,14 +478,19 @@ function rebuildGraph(){
   });
 }
 const ACCOUNT_ICON='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+function avatarHtml(size,radius){
+  const ini=`<span style="font-family:'Fraunces',serif;font-size:${Math.round(size*0.42)}px;${ME.user.photo?'display:none':''}">${esc(initials(ME.user.name||ME.user.email))}</span>`;
+  const img=ME.user.photo?`<img src="${esc(ME.user.photo)}" alt="" style="width:${size}px;height:${size}px;border-radius:${radius}px;object-fit:cover" onerror="this.nextElementSibling.style.display='';this.remove()">`:'';
+  return img+ini;
+}
 async function loadMe(){
   try{ ME=await api('/me'); }catch{ ME={user:null,memberships:[],grants:[]}; }
   const btn=$('#accountBtn');
   btn.classList.toggle('on', !!ME.user);
-  btn.innerHTML = (ME.user&&ME.user.photo) ? `<img src="${esc(ME.user.photo)}" alt="" style="width:22px;height:22px;border-radius:50%">`
-    : (ME.user ? `<span style="font-family:'Fraunces',serif;font-size:13px">${esc(initials(ME.user.name||ME.user.email))}</span>` : ACCOUNT_ICON);
+  btn.innerHTML = ME.user ? avatarHtml(24,12) : ACCOUNT_ICON;
   btn.title = ME.user ? (ME.user.name||ME.user.email) : 'Account';
 }
+function dismissWelcome(){ $('#welcome').classList.remove('show'); try{ localStorage.setItem('kin.welcomed','1'); }catch{} }
 async function loadPending(){
   PENDINGDATA=null; FAMREQS=[];
   if(REMOTE && isAdminHere()){
@@ -502,11 +549,13 @@ async function finishRedirectSignIn(){
 const ROLE_RANK={owner:4,admin:3,editor:2,viewer:1};
 const myFamilies=()=>Object.values(DB.families).filter(f=>f.myRole).sort((a,b)=>(ROLE_RANK[b.myRole]||0)-(ROLE_RANK[a.myRole]||0));
 async function afterAuth(){
-  closeGate(); await loadMe(); await refreshRemote(); renderAccount();
-  toast('Signed in as '+strong(ME.user.name||ME.user.email)+'.');
+  closeGate(); dismissWelcome(); await loadMe(); await refreshRemote();
   /* land on the family you belong to, not the demo */
   const mine=myFamilies();
   if(mine.length && !myRole(state.familyId)) await switchFamily(mine[0].id);
+  closePanel();
+  const n=totalAdminCount(), first=esc((ME.user.name||ME.user.email).split(/[\s@]/)[0]);
+  toast(`Welcome, <b>${first}</b>${n?` — ${n} item${n>1?'s':''} awaiting your review.`:'.'}`);
 }
 async function emailAuth(mode){
   const err=$('#au_err'); err.textContent='';
@@ -540,7 +589,7 @@ function renderAccount(){
   if(ME.user){
     const roles=(ME.memberships||[]).map(m=>`<div class="memrow"><div class="mav">${esc((DB.families[m.family_id]||{}).crest||'?')}</div><div><div class="mn">${esc((DB.families[m.family_id]||{}).name||m.family_id)}</div><div class="me">${esc(m.role)}</div></div></div>`).join('');
     $('#panelBody').innerHTML=`
-      <div class="pv-av">${esc(initials(ME.user.name||ME.user.email))}</div>
+      <div class="pv-av">${avatarHtml(60,15)}</div>
       <div class="field"><label>Signed in as</label><p>${esc(ME.user.name||'')}<br><span class="mono" style="font-size:12px;color:var(--muted)">${esc(ME.user.email)}</span></p></div>
       ${ME.user.isSuper?'<div class="pv-tag" style="border-color:var(--gold);color:var(--gold)">Superadmin — every family, every action</div>':''}
       ${roles?`<div class="divlabel">My families</div>${roles}`:'<p class="hint">No family roles yet — open a family and request access, or request a new line from the directory.</p>'}
@@ -833,6 +882,19 @@ function render(){
     ? 'Ancestor chart · the focus person sits on the left, each column climbs one generation. Dashed plates are missing parents — click to add.'
     : 'Descendant tree · couples share a bar, children hang below. Click anyone to open their record.';
 
+  /* young record: offer the first branches right on the stage */
+  const ob=$('#onboard');
+  const canGrow = REMOTE ? canEditHere() : true;
+  if(!rec && state.view==='desc' && hasAccess(f.id) && canGrow && approvedOf(f.id).length<=2){
+    const seed=P(state.descRoot||f.rootId)||approvedOf(f.id)[0];
+    if(seed){
+      ob.innerHTML=`<h3>This record has just begun</h3>
+        <p>Grow the ${esc(f.name)} line in any direction — every person you add can be grown from in turn.</p>
+        <div class="row"><button onclick="openAdd('parent','${htmlId(seed.id)}')">＋ Parent</button><button onclick="openAdd('partner','${htmlId(seed.id)}')">＋ Partner</button><button onclick="openAdd('child','${htmlId(seed.id)}')">＋ Child</button></div>`;
+      ob.style.display='block';
+    } else ob.style.display='none';
+  } else ob.style.display='none';
+
   syncView();
   updateAdminSeal();
   if(state.view==='desc') renderDesc(); else if(state.view==='anc') renderAnc(); else renderRecords();
@@ -846,6 +908,7 @@ function renderLocked(f){
   $('#zoomers').style.visibility='hidden';
   $('#hintchip').style.display='block';
   $('#hintchip').textContent='Enter the family password to open this record.';
+  $('#onboard').style.display='none';
   g.selectAll('*').remove();
   syncView();
   updateAdminSeal();
@@ -1566,7 +1629,7 @@ $('#zoomers').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset
 svg.on('click',()=>closePanel());
 document.onkeydown=e=>{
   const typing=/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||'');
-  if(e.key==='Escape'){ closePanel(); closeGate(); if(typing) document.activeElement.blur(); }
+  if(e.key==='Escape'){ closePanel(); closeGate(); if($('#welcome').classList.contains('show')) dismissWelcome(); if(typing) document.activeElement.blur(); }
   else if(e.key==='/' && !typing){ e.preventDefault(); $('#search').focus(); }
 };
 window.onresize=()=>{ if(state.view!=='records') fitView(); };
@@ -1592,6 +1655,9 @@ window.onresize=()=>{ if(state.view!=='records') fitView(); };
     state.familyId=target;
     try{ await loadFamily(state.familyId); }catch{}
     await loadPending();
+    /* first visit, signed out → a proper front door */
+    let welcomed=false; try{ welcomed=!!localStorage.getItem('kin.welcomed'); }catch{}
+    if(!ME.user && !welcomed) $('#welcome').classList.add('show');
   }
   render();
 })();
