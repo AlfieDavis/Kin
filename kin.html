@@ -303,6 +303,7 @@ html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 
     <div class="viewtoggle" id="viewToggle">
       <button data-view="desc" class="active">Descendants</button>
       <button data-view="anc">Ancestors</button>
+      <button data-view="time">Timeline</button>
       <button data-view="records">Records</button>
     </div>
     <div class="zoomers" id="zoomers"><button data-z="out" aria-label="Zoom out">−</button><button data-z="fit" title="Fit" aria-label="Fit view">⊙</button><button data-z="in" aria-label="Zoom in">+</button><button data-z="png" title="Download chart as image" aria-label="Download chart as image">⤓</button></div>
@@ -379,6 +380,38 @@ person('h_grace','harrow','Grace Harrow',1957,null,'Née Okafor. Botanist, met T
 union('hu3','h_thomas','h_grace');
 person('h_daniel','harrow','Daniel Harrow',1984,null,'Software, allotments, five-a-side.',{childOf:'hu3'});
 person('h_sophie','harrow','Sophie Harrow',1988,null,'Doctor. Adding her partner\'s line next.',{childOf:'hu3'});
+/* generation up: Edmund's parents + sister, and Rose's own line (spouse extension) */
+person('h_josiah','harrow','Josiah Harrow',1868,1943,'Wheelwright. The earliest Harrow anyone can name.');
+person('h_clara','harrow','Clara Harrow',1874,1951,'Née Meade. Ran the household and half the village.');
+union('hu0','h_josiah','h_clara');
+person('h_florence','harrow','Florence Harrow',1899,1982,'Edmund\'s elder sister. Never married; kept bees.',{childOf:'hu0'});
+DB.persons['h_edmund'].childOf='hu0';
+person('h_wilfred','harrow','Wilfred Cottrell',1870,1936,'Rose\'s father — proof a spouse\'s line grows upward too.');
+person('h_ivy','harrow','Ivy Cottrell',1880,1965,'Née Pruett. Outlived nearly everyone she wrote to.');
+union('hu0b','h_wilfred','h_ivy');
+DB.persons['h_rose'].childOf='hu0b';
+/* Vera's branch — cousins for the relationship finder */
+person('h_gordon','harrow','Gordon Ashdown',1926,2001,'Second violin, first husband.');
+union('hu4','h_vera','h_gordon');
+person('h_clive','harrow','Clive Ashdown',1954,null,'Luthier. Vera\'s eldest.',{childOf:'hu4'});
+person('h_heather','harrow','Heather Ashdown',1957,2019,'Toured with three orchestras and a circus.',{childOf:'hu4'});
+person('h_priya','harrow','Priya Ashdown',1958,null,'Née Nair. Conductor; met Clive over a cracked cello.');
+union('hu5','h_clive','h_priya');
+person('h_ravi','harrow','Ravi Ashdown',1985,null,'Sound engineer. Second cousin to Daniel\'s children.',{childOf:'hu5'});
+person('h_mira','harrow','Mira Ashdown',1989,null,'Violin teacher, like her grandmother wished.',{childOf:'hu5'});
+/* partnerships + the youngest generation */
+person('h_coral','harrow','Coral Voss',1960,null,'Sculptor. Eleanor\'s partner of forty years.');
+union('hu6','h_eleanor','h_coral',{type:'partnership'});
+person('h_roger','harrow','Roger Harrow',1961,null,'The youngest of Arthur\'s three. Restores clocks like Edmund.',{childOf:'hu2'});
+person('h_lin','harrow','Lin Harrow',1963,null,'Née Chen. Horologist — they met at an auction, bidding against each other.');
+union('hu9','h_roger','h_lin');
+person('h_ken','harrow','Ken Harrow',1990,null,'Watchmaker in a world of phones.',{childOf:'hu9'});
+person('h_femke','harrow','Femke Harrow',1986,null,'Née de Vries. Cartographer.');
+union('hu7','h_daniel','h_femke');
+person('h_otis','harrow','Otis Harrow',2016,null,'Collects snail shells and facts about the moon.',{childOf:'hu7'});
+person('h_nell','harrow','Nell Harrow',2019,null,'The newest leaf on the tree.',{childOf:'hu7'});
+person('h_amara','harrow','Amara Osei',1987,null,'Epidemiologist. Sophie\'s partner.');
+union('hu8','h_sophie','h_amara',{type:'partnership'});
 
 /* ================================================================
    state + helpers
@@ -435,7 +468,19 @@ function rememberUnlocked(){ try{ sessionStorage.setItem('kin.unlocked',JSON.str
 let REMOTE=false;
 let ME={user:null, memberships:[], grants:[]};
 const FAMDATA={};                 // familyId -> {persons, unions} (loaded graphs)
-let PENDINGDATA=null, FAMREQS=[], MEMBERS=null;
+let PENDINGDATA=null, FAMREQS=[], MEMBERS=null, AUDITL=null;
+
+/* ---- deep links: #/familyId/view(/personId) ---- */
+function parseHash(){
+  const m=location.hash.match(/^#\/([a-zA-Z0-9-]+)\/(desc|anc|records|time)(?:\/([A-Za-z0-9_-]+))?$/);
+  return m?{fid:m[1], view:m[2], pid:m[3]||null}:null;
+}
+function reflectHash(){ try{ history.replaceState(null,'',location.pathname+location.search+`#/${state.familyId}/${state.view}`); }catch{} }
+async function copyPersonLink(id){
+  const url=`${location.origin}${location.pathname}#/${state.familyId}/${state.view}/${id}`;
+  try{ await navigator.clipboard.writeText(url); toast('Link copied — anyone with access to this family can open it.'); }
+  catch{ toast(esc(url)); }
+}
 const localPins=new Set((()=>{ try{ return JSON.parse(localStorage.getItem('kin.pins')||'[]'); }catch{ return []; } })());
 
 async function api(path, opts={}){
@@ -492,7 +537,7 @@ async function loadMe(){
 }
 function dismissWelcome(){ $('#welcome').classList.remove('show'); try{ localStorage.setItem('kin.welcomed','1'); }catch{} }
 async function loadPending(){
-  PENDINGDATA=null; FAMREQS=[];
+  PENDINGDATA=null; FAMREQS=[]; AUDITL=null;
   if(REMOTE && isAdminHere()){
     try{ PENDINGDATA=await api('/families/'+encodeURIComponent(state.familyId)+'/pending'); }catch{ PENDINGDATA=null; }
   }
@@ -567,6 +612,11 @@ async function emailAuth(mode){
     await afterAuth();
   }catch(e){ err.textContent=e.message; }
 }
+async function saveProfile(){
+  const name=$('#pf_name').value.trim(); if(!name) return;
+  try{ await api('/me',{method:'PATCH',body:{name}}); await loadMe(); renderAccount(); toast('Name updated.'); }
+  catch(e){ toast(esc(e.message)); }
+}
 async function signOut(){
   try{ await api('/auth/logout',{method:'POST'}); }catch{}
   if(fbAuth) fbAuth.signOut().catch(()=>{});
@@ -590,7 +640,9 @@ function renderAccount(){
     const roles=(ME.memberships||[]).map(m=>`<div class="memrow"><div class="mav">${esc((DB.families[m.family_id]||{}).crest||'?')}</div><div><div class="mn">${esc((DB.families[m.family_id]||{}).name||m.family_id)}</div><div class="me">${esc(m.role)}</div></div></div>`).join('');
     $('#panelBody').innerHTML=`
       <div class="pv-av">${avatarHtml(60,15)}</div>
-      <div class="field"><label>Signed in as</label><p>${esc(ME.user.name||'')}<br><span class="mono" style="font-size:12px;color:var(--muted)">${esc(ME.user.email)}</span></p></div>
+      <div class="field"><label>Signed in as</label><p><span class="mono" style="font-size:12px;color:var(--muted)">${esc(ME.user.email)}</span></p></div>
+      <div class="field"><label>Display name</label>
+        <div style="display:flex;gap:8px"><input class="finput" id="pf_name" value="${esc(ME.user.name||'')}"><button class="btn-ghost" style="flex:none;padding:0 15px" onclick="saveProfile()">Save</button></div></div>
       ${ME.user.isSuper?'<div class="pv-tag" style="border-color:var(--gold);color:var(--gold)">Superadmin — every family, every action</div>':''}
       ${roles?`<div class="divlabel">My families</div>${roles}`:'<p class="hint">No family roles yet — open a family and request access, or request a new line from the directory.</p>'}
       <button class="btn-ghost" style="width:100%;margin-top:18px" onclick="signOut()">Sign out</button>`;
@@ -814,6 +866,42 @@ function renderAnc(){
 }
 
 /* ================================================================
+   TIMELINE — every dated life as a bar against the years
+   ================================================================ */
+function renderTimeline(){
+  g.selectAll('*').remove(); addDefs();
+  const nowY=new Date().getFullYear();
+  const rows=approvedOf(state.familyId)
+    .map(p=>({p, b:Number(yearOf(p.born)), d:isLiving(p)?nowY:Number(yearOf(p.died))}))
+    .filter(r=>r.b>0 && r.d>=r.b)
+    .sort((a,b)=>a.b-b.b || a.p.name.localeCompare(b.p.name));
+  if(!rows.length){ $('#hintchip').textContent='No dated kin yet — add birth years and they appear here.'; return; }
+  const y0=Math.floor(Math.min(...rows.map(r=>r.b))/10)*10, y1=Math.ceil(Math.max(...rows.map(r=>r.d))/10)*10;
+  const PX=7, rowH=32, H=rows.length*rowH;
+  const X=yr=>(yr-y0)*PX;
+  const layer=g.append('g');
+  for(let yr=y0; yr<=y1; yr+=10){
+    layer.append('line').attr('x1',X(yr)).attr('x2',X(yr)).attr('y1',-30).attr('y2',H)
+      .attr('stroke','var(--line)').attr('stroke-width',yr%50?0.7:1.4);
+    layer.append('text').attr('x',X(yr)).attr('y',-40).attr('text-anchor','middle')
+      .attr('fill','var(--muted)').style('font','500 10px "JetBrains Mono",monospace').text(yr);
+  }
+  if(nowY>=y0&&nowY<=y1) layer.append('line').attr('x1',X(nowY)).attr('x2',X(nowY)).attr('y1',-30).attr('y2',H)
+    .attr('stroke','var(--verd)').attr('stroke-opacity',.45).attr('stroke-dasharray','3 4');
+  rows.forEach((r,i)=>{
+    const y=i*rowH, w=Math.max(10,X(r.d)-X(r.b));
+    const gg=layer.append('g').attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(r.p.id);});
+    gg.append('rect').attr('x',X(r.b)).attr('y',y).attr('width',w).attr('height',20).attr('rx',10)
+      .attr('fill','url(#plateGrad)').attr('stroke',(settings.livingMarker&&isLiving(r.p))?'var(--verd)':'var(--gold-soft)').attr('stroke-width',1).attr('filter','url(#plateShadow)');
+    gg.append('text').attr('x',X(r.b)-9).attr('y',y+14).attr('text-anchor','end').attr('fill','var(--bone)')
+      .style('font','500 12px Fraunces,serif').text(trunc(r.p.name,26));
+    if(settings.showDates && w>60) gg.append('text').attr('x',X(r.b)+9).attr('y',y+13.5).attr('fill','var(--muted)')
+      .style('font','400 9.5px "JetBrains Mono",monospace').text(isLiving(r.p)?r.b+' –':r.b+'–'+r.d);
+  });
+  reveal(); fitView();
+}
+
+/* ================================================================
    RECORDS
    ================================================================ */
 function familyStats(fid){
@@ -869,6 +957,7 @@ function render(){
   let crumb='', meta='';
   if(state.view==='desc'){ const r=P(state.descRoot||f.rootId)||approvedOf(f.id)[0]; crumb='Descendants of'; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span><span>${esc(f.side)}</span>`; $('#famTitle').textContent=r?r.name:f.name; }
   else if(state.view==='anc'){ const r=P(state.ancFocus||f.pivotId)||approvedOf(f.id)[0]; crumb='Ancestors of'; $('#famTitle').textContent=r?r.name:f.name; meta=`<span>${esc(f.name)} line</span><span>generations climb rightward</span>`; }
+  else if(state.view==='time'){ const st=familyStats(f.id); crumb='Timeline of'; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span>${st.span?`<span>born ${esc(st.span)}</span>`:''}`; }
   else { crumb=f.name; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin recorded</span>`; }
   $('#crumb').textContent=crumb;
   $('#famMeta').innerHTML=meta;
@@ -878,9 +967,10 @@ function render(){
   $('#canvas').style.display=rec?'none':'block';
   $('#zoomers').style.visibility=rec?'hidden':'visible';
   $('#hintchip').style.display=rec?'none':'block';
-  $('#hintchip').innerHTML = state.view==='anc'
-    ? 'Ancestor chart · the focus person sits on the left, each column climbs one generation. Dashed plates are missing parents — click to add.'
-    : 'Descendant tree · couples share a bar, children hang below. Click anyone to open their record.';
+  $('#hintchip').innerHTML = ({
+    anc:'Ancestor chart · the focus person sits on the left, each column climbs one generation. Dashed plates are missing parents — click to add.',
+    time:'Timeline · every dated life as a bar, oldest first. The dashed green line is today. Click a bar to open the record.',
+  })[state.view] || 'Descendant tree · couples share a bar, children hang below. Click anyone to open their record.';
 
   /* young record: offer the first branches right on the stage */
   const ob=$('#onboard');
@@ -897,7 +987,8 @@ function render(){
 
   syncView();
   updateAdminSeal();
-  if(state.view==='desc') renderDesc(); else if(state.view==='anc') renderAnc(); else renderRecords();
+  if(state.view==='desc') renderDesc(); else if(state.view==='anc') renderAnc(); else if(state.view==='time') renderTimeline(); else renderRecords();
+  reflectHash();
 }
 function renderLocked(f){
   $('#famTitle').textContent=f.name;
@@ -934,7 +1025,7 @@ async function switchFamily(id){
   state.familyId=id; state.descRoot=null; state.ancFocus=null; state.query=''; $('#search').value=''; closePanel();
   try{ localStorage.setItem('kin.lastFamily', id); }catch{}
   if(REMOTE && !FAMDATA[id]){ toast(`Opening ${strong(f.name)}…`); try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
-  if(REMOTE){ PENDINGDATA=null; MEMBERS=null; loadPending(); }
+  if(REMOTE){ PENDINGDATA=null; MEMBERS=null; AUDITL=null; loadPending(); }
   render();
 }
 function syncView(){ $('#viewToggle').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view)); }
@@ -963,7 +1054,9 @@ function openPerson(id,opts={}){
     ${canEdit&&canDelete?`<button class="act" onclick="openEdit('${htmlId(id)}')">Edit record</button><button class="act danger" onclick="deletePerson('${htmlId(id)}')">Delete record</button>`
       :canEdit?`<button class="act full" onclick="openEdit('${htmlId(id)}')">Edit record</button>`
       :(REMOTE&&ME.user)?`<button class="act full" onclick="openEdit('${htmlId(id)}')">Suggest an edit</button>`:''}
+    ${REMOTE?`<button class="act full" onclick="copyPersonLink('${htmlId(id)}')">Copy link to this record</button>`:''}
   </div>`;
+  state.lastPerson=id;
   if(p.bio) body+=`<div class="field"><label>Note</label><p>${esc(p.bio)}</p></div>`;
   (p.links||[]).forEach(l=>{ const url=safeUrl(l); if(url) body+=`<div class="field"><label>Link</label><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(l)}</a></div>`; });
   (p.contacts||[]).forEach(c=>{ const email=safeEmail(c); if(email) body+=`<div class="field"><label>Contact</label><a href="mailto:${esc(email)}">${esc(email)}</a></div>`; });
@@ -1226,8 +1319,15 @@ async function renderAdminRemote(){
   const pk=PENDINGDATA.pendingKin, cs=PENDINGDATA.changes, jr=PENDINGDATA.joins;
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Admin console</h2><div class="pv-dates" style="color:var(--muted)">${esc(f.name)} · you are ${esc(amSuper()?'superadmin':myRole(f.id)||'')}</div>`;
   const tab=(id,label,n)=>`<button class="${state.adminTab===id?'active':''}" onclick="state.adminTab='${id}';renderAdmin()">${label}${n?`<span class="tseal">${n}</span>`:''}</button>`;
-  const tabs=`<div class="tabs">${tab('pending','Kin',pk.length)}${tab('edits','Edits',cs.length)}${tab('join','Access',jr.length)}${tab('members','Roles',0)}${tab('family','Family',0)}${amSuper()?tab('families','Lines',FAMREQS.length):''}</div>`;
+  const tabs=`<div class="tabs">${tab('pending','Kin',pk.length)}${tab('edits','Edits',cs.length)}${tab('join','Access',jr.length)}${tab('members','Roles',0)}${tab('family','Family',0)}${tab('log','Log',0)}${amSuper()?tab('families','Lines',FAMREQS.length):''}</div>`;
   let body='';
+  if(state.adminTab==='log'){
+    if(!AUDITL){ try{ AUDITL=(await api('/families/'+encodeURIComponent(f.id)+'/audit')).log; }catch{ AUDITL=[]; } }
+    body = AUDITL.length? `<p class="hint">The last ${AUDITL.length} moderation actions on ${esc(f.name)} — every approve, decline, grant, and change is recorded.</p>`+
+      AUDITL.map(l=>`<div class="memrow"><div class="mav" style="font-size:12px">✓</div><div><div class="mn">${esc(l.action.replace(/\./g,' '))}${l.meta&&l.meta.name?' · '+esc(l.meta.name):''}</div><div class="me">${esc(l.by||'system')} · ${esc(l.at)}</div></div></div>`).join('')
+      : '<div class="empty">Nothing logged yet.</div>';
+    $('#panelBody').innerHTML=tabs+body; return;
+  }
   if(state.adminTab==='pending'){
     body = pk.length ? pk.map(p=>`<div class="card"><h4>${esc(p.name)}</h4><div class="sub">${esc(dates(p))}</div>
       <p>${esc(p.bio||'No note.')}</p><div class="row"><button class="approve" onclick="approveKin('${htmlId(p.id)}')">Approve</button><button class="decline" onclick="declineKin('${htmlId(p.id)}')">Decline</button></div></div>`).join('')
@@ -1492,7 +1592,7 @@ async function exportPNG(){
     cv.toBlob(blob=>{
       if(!blob){ toast('Could not render the image.'); return; }
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-      a.download=`kin-${state.familyId}-${state.view==='anc'?'ancestors':'descendants'}.png`;
+      a.download=`kin-${state.familyId}-${({anc:'ancestors',time:'timeline'})[state.view]||'descendants'}.png`;
       document.body.appendChild(a); a.click();
       setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },400);
       toast('Chart image downloaded.');
@@ -1554,7 +1654,10 @@ function personOptions(sel){
   return `<option value="">— pick a person —</option>`+Object.values(DB.families).filter(f=>hasAccess(f.id)).map(f=>
     `<optgroup label="${esc(f.name)}">${approvedOf(f.id).map(p=>`<option value="${htmlId(p.id)}"${p.id===sel?' selected':''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('');
 }
-function openRelate(){ $('#panel').classList.add('wide','open'); $('#panelFoot').style.display='none'; renderRelate(); }
+function openRelate(){
+  if(!state.relA) state.relA=state.lastPerson||fam().pivotId||fam().rootId;
+  $('#panel').classList.add('wide','open'); $('#panelFoot').style.display='none'; renderRelate();
+}
 function renderRelate(){
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>How are we related?</h2><div class="pv-dates" style="color:var(--muted)">Trace the shortest path through the record</div>`;
   $('#panelBody').innerHTML=`
@@ -1646,21 +1749,36 @@ window.onresize=()=>{ if(state.view!=='records') fitView(); };
     await finishRedirectSignIn();
     try{ await loadDirectory(); }catch{ REMOTE=false; }
   }
+  const deepLink=parseHash();
   if(REMOTE){
-    /* landing family: last visited → highest role → first open → first */
+    /* landing family: deep link → last visited → highest role → first open → first */
     let target=null;
-    try{ const last=localStorage.getItem('kin.lastFamily'); if(last && DB.families[last] && hasAccess(last)) target=last; }catch{}
+    if(deepLink && DB.families[deepLink.fid]){ target=deepLink.fid; state.view=deepLink.view; }
+    if(!target){ try{ const last=localStorage.getItem('kin.lastFamily'); if(last && DB.families[last] && hasAccess(last)) target=last; }catch{} }
     if(!target){ const mine=myFamilies(); if(mine.length) target=mine[0].id; }
     if(!target){ const open=Object.values(DB.families).find(f=>f.canView); target=open?open.id:Object.keys(DB.families)[0]; }
     state.familyId=target;
     try{ await loadFamily(state.familyId); }catch{}
     await loadPending();
-    /* first visit, signed out → a proper front door */
+    /* first visit, signed out → a proper front door (never over a shared link) */
     let welcomed=false; try{ welcomed=!!localStorage.getItem('kin.welcomed'); }catch{}
-    if(!ME.user && !welcomed) $('#welcome').classList.add('show');
+    if(!ME.user && !welcomed && !deepLink) $('#welcome').classList.add('show');
+    /* keep the moderation seal fresh while an admin has the tab open */
+    setInterval(()=>{ if(ME.user && isAdminHere() && !document.hidden) loadPending(); }, 60000);
+  } else if(deepLink && DB.families[deepLink.fid] && hasAccess(deepLink.fid)){
+    state.familyId=deepLink.fid; state.view=deepLink.view;
   }
   render();
+  if(deepLink && deepLink.pid && P(deepLink.pid) && hasAccess(state.familyId)) openPerson(deepLink.pid);
 })();
+
+/* shared links while the app is open */
+window.onhashchange=async()=>{
+  const h=parseHash(); if(!h || !DB.families[h.fid]) return;
+  if(h.fid!==state.familyId) await switchFamily(h.fid);
+  if(state.view!==h.view){ state.view=h.view; render(); }
+  if(h.pid && P(h.pid)) openPerson(h.pid);
+};
 </script>
 </body>
 </html>
