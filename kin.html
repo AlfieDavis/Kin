@@ -4,7 +4,7 @@
 <!-- Kin - genealogy prototype (graph model: persons + unions). Single file, in-memory. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://lh3.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="Kin — a family record. Browse genealogy as a graph: descendant trees, ancestor charts, and a relationship finder.">
 <meta name="color-scheme" content="dark light">
@@ -82,7 +82,7 @@ input,textarea,select{font-family:inherit}
 .stagehdr .meta{margin-top:6px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); display:flex; gap:12px}
 .stagehdr b{color:var(--gold); font-weight:500}
 
-.dock{position:absolute; left:24px; bottom:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+.dock{position:absolute; left:24px; bottom:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; z-index:6}
 .viewtoggle{display:flex; gap:3px; padding:4px; background:rgba(27,30,37,.85); backdrop-filter:blur(8px); border:1px solid var(--line); border-radius:11px}
 .viewtoggle button{padding:7px 13px; border-radius:8px; font-size:12.5px; color:var(--muted)}
 .viewtoggle button.active{background:var(--ink); color:var(--bone); box-shadow:inset 0 0 0 1px var(--gold-soft)}
@@ -90,12 +90,14 @@ input,textarea,select{font-family:inherit}
 .zoomers{display:flex; gap:3px; padding:4px; background:rgba(27,30,37,.85); backdrop-filter:blur(8px); border:1px solid var(--line); border-radius:11px}
 .zoomers button{width:30px; height:30px; border-radius:7px; color:var(--bone-dim); font-size:16px; display:grid; place-items:center}
 .zoomers button:hover{background:var(--ink); color:var(--gold)}
-.hintchip{position:absolute; right:24px; bottom:22px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted);
+.hintchip{position:absolute; right:24px; bottom:22px; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); z-index:6;
   background:rgba(27,30,37,.7); backdrop-filter:blur(8px); padding:8px 13px; border:1px solid var(--line); border-radius:10px; max-width:260px; line-height:1.5}
 
 /* records */
-.records{position:absolute; inset:0; overflow:auto; padding:118px 40px 60px; display:none}
+.records{position:absolute; inset:0; overflow:auto; padding:118px 40px 96px; display:none; z-index:1}
 .records.show{display:block}
+.rec-tools{display:flex; gap:10px; flex-wrap:wrap; max-width:1200px; margin:0 auto 18px}
+.rec-tools .viewtoggle{position:static; background:var(--ink-2)}
 .rec-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:16px; max-width:1200px; margin:0 auto}
 .plate{background:var(--ink-2); border:1px solid var(--line); border-radius:14px; padding:18px; transition:.18s; position:relative; text-align:left}
 .plate:hover{border-color:var(--gold-soft); transform:translateY(-2px); box-shadow:var(--shadow)}
@@ -204,7 +206,8 @@ select.finput{appearance:none; background-image:url("data:image/svg+xml,%3Csvg x
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 .toast b{color:var(--gold)}
 
-@media (max-width:760px){ .switcher,.wordmark .sub{display:none} .search{width:130px} .hintchip{display:none} }
+@media (max-width:760px){ .switcher,.wordmark .sub{display:none} .search{width:110px} .hintchip{display:none}
+  .topbar{gap:8px; padding:0 10px} .btn-primary{padding:9px 11px} .records{padding:118px 16px 110px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
 
 /* ---------- configurable appearance (settings) ---------- */
@@ -276,11 +279,11 @@ html[data-anim="off"] *{animation:none!important; transition:none!important}
       <button data-view="anc">Ancestors</button>
       <button data-view="records">Records</button>
     </div>
-    <div class="zoomers" id="zoomers"><button data-z="out" aria-label="Zoom out">−</button><button data-z="fit" title="Fit" aria-label="Fit view">⊙</button><button data-z="in" aria-label="Zoom in">+</button></div>
+    <div class="zoomers" id="zoomers"><button data-z="out" aria-label="Zoom out">−</button><button data-z="fit" title="Fit" aria-label="Fit view">⊙</button><button data-z="in" aria-label="Zoom in">+</button><button data-z="png" title="Download chart as image" aria-label="Download chart as image">⤓</button></div>
     <button class="ghostbtn" id="relateBtn" title="Trace how two people are related">⇄ How related?</button>
   </div>
   <div class="hintchip" id="hintchip"></div>
-  <div class="records" id="records"><div class="rec-title"><h2 id="recTitle">Blaker</h2><span id="recCount"></span></div><div class="statchips" id="recStats"></div><div class="rec-grid" id="recGrid"></div></div>
+  <div class="records" id="records"><div class="rec-title"><h2 id="recTitle">Blaker</h2><span id="recCount"></span></div><div class="statchips" id="recStats"></div><div class="rec-tools" id="recTools"></div><div class="rec-grid" id="recGrid"></div></div>
 </div>
 
 <aside class="panel" id="panel" role="complementary"><div class="panel-head" id="panelHead"></div><div class="panel-body" id="panelBody"></div><div class="panel-foot" id="panelFoot" style="display:none"></div></aside>
@@ -375,7 +378,7 @@ function loadDB(){
 }
 loadDB();
 
-const state = { familyId:'harrow', view:'desc', descRoot:null, ancFocus:null, admin:false, query:'', dirTab:'browse', adminTab:'pending' };
+const state = { familyId:'harrow', view:'desc', descRoot:null, ancFocus:null, admin:false, query:'', dirTab:'browse', adminTab:'pending', recSort:'name', recFilter:'all' };
 if(!DB.families[state.familyId]) state.familyId=Object.keys(DB.families)[0];
 const unlocked = new Set();
 try{ JSON.parse(sessionStorage.getItem('kin.unlocked')||'[]').forEach(id=>{ if(DB.families[id]) unlocked.add(id); }); }catch{}
@@ -545,6 +548,9 @@ const P = id=>DB.persons[id];
 const U = id=>DB.unions[id];
 const isLiving = p=>p && p.died==null;
 const yearOf = v=>{ const m=String(v??'').match(/-?\d{3,4}/); return m?m[0]:null; };
+const ageOf = p=>{ const b=Number(yearOf(p.born)); if(!b) return null;
+  const e=isLiving(p)?new Date().getFullYear():Number(yearOf(p.died));
+  return (e&&e>=b&&e-b<130)?e-b:null; };
 const dval = v=> v==null?null:(settings.yearOnly?(yearOf(v)??v):v);
 const dates = p=> p.died==null ? ('b. '+(dval(p.born)||'—')) : ((dval(p.born)||'—')+'–'+dval(p.died));
 const initials = n=>String(n||'').trim().split(/\s+/).filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
@@ -744,6 +750,13 @@ function renderRecords(){
   const q=state.query.toLowerCase();
   let list=approvedOf(state.familyId);
   if(q) list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.bio||'').toLowerCase().includes(q));
+  if(state.recFilter==='living') list=list.filter(isLiving);
+  else if(state.recFilter==='memory') list=list.filter(p=>!isLiving(p));
+  if(state.recSort==='born') list=[...list].sort((a,b)=>(Number(yearOf(a.born))||9999)-(Number(yearOf(b.born))||9999));
+  else list=[...list].sort((a,b)=>a.name.localeCompare(b.name));
+  const chip=(key,val,label)=>`<button class="${state[key]===val?'active':''}" onclick="state.${key}='${val}';renderRecords()">${label}</button>`;
+  $('#recTools').innerHTML=`<div class="viewtoggle">${chip('recFilter','all','All')}${chip('recFilter','living','Living')}${chip('recFilter','memory','In memory')}</div>
+    <div class="viewtoggle">${chip('recSort','name','A–Z')}${chip('recSort','born','By birth')}</div>`;
   $('#recCount').textContent=`${list.length} of ${approvedOf(state.familyId).length} kin`;
   const st=familyStats(state.familyId);
   $('#recStats').innerHTML=[`<b>${st.total}</b> kin`,`<b>${st.living}</b> living`,`<b>${st.unions}</b> unions`,
@@ -824,7 +837,7 @@ async function switchFamily(id){
   if(!f) return;
   if(!hasAccess(id)){ openGate(id); return; }
   state.familyId=id; state.descRoot=null; state.ancFocus=null; state.query=''; $('#search').value=''; closePanel();
-  if(REMOTE && !FAMDATA[id]){ try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
+  if(REMOTE && !FAMDATA[id]){ toast(`Opening ${strong(f.name)}…`); try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
   if(REMOTE){ PENDINGDATA=null; MEMBERS=null; loadPending(); }
   render();
 }
@@ -841,7 +854,7 @@ function openPerson(id,opts={}){
   $('#panel').classList.remove('wide');
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button>
     <div class="pv-av">${esc(initials(p.name))}</div>
-    <h2>${esc(p.name)}</h2><div class="pv-dates">${esc(dates(p))}</div>
+    <h2>${esc(p.name)}</h2><div class="pv-dates">${esc(dates(p))}${(()=>{const a=ageOf(p); return a==null?'':isLiving(p)?` · age ${a}`:` · lived ${a} years`;})()}</div>
     <div class="pv-tag">${isLiving(p)?'<i class="dot" style="background:var(--verd)"></i> Living':'In memory'} · ${esc(DB.families[p.familyId].name)} line</div>
     ${p.status==='pending'?'<div class="pv-tag" style="border-color:var(--rust);color:var(--rust)">Pending approval</div>':''}`;
 
@@ -1355,6 +1368,42 @@ function exportGEDCOM(){
   toast(`GEDCOM for ${strong(f.name)} downloaded.`);
 }
 
+/* ---- chart → PNG (resolves CSS variables so the image stands alone) ---- */
+async function exportPNG(){
+  const svgEl=document.getElementById('canvas');
+  const inner=g.node(); if(!inner || !inner.getBBox().width){ toast('Nothing to export in this view.'); return; }
+  const clone=svgEl.cloneNode(true);
+  const origs=svgEl.querySelectorAll('*'), copies=clone.querySelectorAll('*');
+  origs.forEach((o,i)=>{ const c=copies[i]; if(!c||!c.getAttribute) return;
+    ['fill','stroke'].forEach(a=>{ const v=c.getAttribute(a);
+      if(v && v.includes('var(')) c.setAttribute(a, getComputedStyle(o)[a]); }); });
+  const b=inner.getBBox(), pad=48, scale=2;
+  const cg=clone.querySelector('g'); if(cg) cg.removeAttribute('transform');
+  clone.setAttribute('viewBox',`${b.x-pad} ${b.y-pad} ${b.width+2*pad} ${b.height+2*pad}`);
+  clone.setAttribute('width',Math.round((b.width+2*pad)*scale));
+  clone.setAttribute('height',Math.round((b.height+2*pad)*scale));
+  clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],{type:'image/svg+xml'}));
+  try{
+    const img=new Image();
+    await new Promise((res,rej)=>{ img.onload=res; img.onerror=()=>rej(new Error('render failed')); img.src=url; });
+    const cv=document.createElement('canvas'); cv.width=img.width; cv.height=img.height;
+    const ctx=cv.getContext('2d');
+    ctx.fillStyle=settings.theme==='light'?'#F3EEE2':'#15171C';
+    ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.drawImage(img,0,0);
+    cv.toBlob(blob=>{
+      if(!blob){ toast('Could not render the image.'); return; }
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=`kin-${state.familyId}-${state.view==='anc'?'ancestors':'descendants'}.png`;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },400);
+      toast('Chart image downloaded.');
+    },'image/png');
+  }catch{ toast('Could not render the image.'); }
+  finally{ URL.revokeObjectURL(url); }
+}
+
 /* ================================================================
    RELATIONSHIP FINDER — shortest path through the graph + kinship label
    ================================================================ */
@@ -1474,8 +1523,12 @@ $('#relateBtn').onclick=openRelate;
 $('#importFile').onchange=e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; };
 $('#scrim').onclick=e=>{ if(e.target.id==='scrim') closeGate(); };
 $('#search').oninput=e=>{ state.query=e.target.value; if(state.view!=='records'){ state.view='records'; } render(); };
+$('#search').onkeydown=e=>{ if(e.key!=='Enter') return;
+  const q=state.query.toLowerCase(); if(!q) return;
+  const hit=approvedOf(state.familyId).find(p=>p.name.toLowerCase().includes(q)||(p.bio||'').toLowerCase().includes(q));
+  if(hit) openPerson(hit.id); };
 $('#viewToggle').querySelectorAll('button').forEach(b=>b.onclick=()=>{ state.view=b.dataset.view; render(); });
-$('#zoomers').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.z==='fit') fitView(); else svg.transition().duration(250).call(zoom.scaleBy,b.dataset.z==='in'?1.3:1/1.3); });
+$('#zoomers').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.z==='png') exportPNG(); else if(b.dataset.z==='fit') fitView(); else svg.transition().duration(250).call(zoom.scaleBy,b.dataset.z==='in'?1.3:1/1.3); });
 svg.on('click',()=>closePanel());
 document.onkeydown=e=>{
   const typing=/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||'');
