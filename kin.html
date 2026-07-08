@@ -788,6 +788,24 @@ const partnerIn = (pid,u)=> u.a===pid?u.b:u.a;
 const childrenOf = pid=>{ const kids=[]; unionsOf(pid).forEach(u=>{ Object.values(DB.persons).forEach(p=>{ if(p.childOf===u.id) kids.push(p); }); }); return kids; };
 const parentsOf = pid=>{ const p=P(pid); if(!p||!p.childOf) return []; const u=U(p.childOf); return [P(u.a),P(u.b)].filter(Boolean); };
 const primaryPartner = pid=>{ const u=unionsOf(pid).find(u=>u.status==='approved'); return u?P(partnerIn(pid,u)):null; };
+/* climb one parent chain to the oldest recorded ancestor — so the Descendants
+   tree roots at the top of the line and shows the whole known family, not just
+   the focus person when they have parents but no children yet */
+const oldestAncestor = startId=>{
+  let cur=startId; const seen=new Set();
+  while(cur && !seen.has(cur)){
+    seen.add(cur);
+    const p=P(cur); if(!p||!p.childOf) break;
+    const u=U(p.childOf); if(!u) break;
+    const up=(P(u.a)&&u.a) || (P(u.b)&&u.b);
+    if(!up) break;
+    cur=up;
+  }
+  return cur;
+};
+const descRootOf = fid=>{ const f=DB.families[fid]; if(!f) return null;
+  const base=(P(f.rootId)&&f.rootId) || (approvedOf(fid)[0]||{}).id;
+  return base?oldestAncestor(base):null; };
 const pendingKin = fid=>membersOf(fid).filter(p=>p.status==='pending');
 const totalAdminCount = ()=> REMOTE
   ? (PENDINGDATA ? PENDINGDATA.pendingKin.length + PENDINGDATA.changes.length + PENDINGDATA.joins.length : 0) + FAMREQS.length
@@ -867,7 +885,7 @@ function descHierarchy(rootId){
 }
 function renderDesc(){
   g.selectAll('*').remove(); addDefs();
-  let rootId = state.descRoot || fam().rootId;
+  let rootId = state.descRoot || descRootOf(state.familyId);
   if(!P(rootId)) rootId = (approvedOf(state.familyId)[0]||{}).id;
   if(!rootId){ $('#hintchip').textContent='This record is empty — use “Add kin” to begin the line.'; return; }
   const root = descHierarchy(rootId);
@@ -1088,7 +1106,7 @@ function render(){
   }
   $('#famTitle').textContent=f.name;
   let crumb='', meta='';
-  if(state.view==='desc'){ const r=P(state.descRoot||f.rootId)||approvedOf(f.id)[0]; crumb='Descendants of'; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span><span>${esc(f.side)}</span>`; $('#famTitle').textContent=r?r.name:f.name; }
+  if(state.view==='desc'){ const r=P(state.descRoot||descRootOf(f.id))||approvedOf(f.id)[0]; crumb=state.descRoot?'Descendants of':'Family tree —'; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span><span>${esc(f.side)}</span>`; $('#famTitle').textContent=r?r.name:f.name; }
   else if(state.view==='anc'){ const r=P(state.ancFocus||f.pivotId)||approvedOf(f.id)[0]; crumb='Ancestors of'; $('#famTitle').textContent=r?r.name:f.name; meta=`<span>${esc(f.name)} line</span><span>generations climb rightward</span>`; }
   else if(state.view==='time'){ const st=familyStats(f.id); crumb='Timeline of'; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span>${st.span?`<span>born ${esc(st.span)}</span>`:''}`; }
   else { crumb=f.name; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin recorded</span>`; }
