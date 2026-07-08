@@ -271,6 +271,13 @@ html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 
 .onboard .row{display:flex; gap:8px; justify-content:center}
 .onboard .row button{padding:8px 13px; border-radius:9px; background:var(--ink-3); border:1px solid var(--line); font-size:12.5px; color:var(--bone-dim); transition:.15s}
 .onboard .row button:hover{border-color:var(--gold-soft); color:var(--bone)}
+.health{max-width:1200px; margin:0 auto 18px; background:rgba(180,103,76,.08); border:1px solid var(--rust); border-radius:12px; padding:14px 16px}
+.health>b{color:var(--rust); font-family:'Fraunces',serif; font-weight:500; font-size:15px}
+.health .hrows{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px}
+.health .hrows button{display:flex; align-items:center; gap:8px; padding:7px 12px; border-radius:9px; background:var(--ink-3); border:1px solid var(--line); font-size:12.5px; color:var(--bone-dim)}
+.health .hrows button:hover{border-color:var(--rust); color:var(--bone)}
+.health .hrows i{font-style:normal; color:var(--muted); font-size:11px}
+.health .hmore{margin-top:8px; font-size:11px; color:var(--muted)}
 </style>
 </head>
 <body>
@@ -320,7 +327,7 @@ html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 
   </div>
   <div class="hintchip" id="hintchip"></div>
   <div class="onboard" id="onboard"></div>
-  <div class="records" id="records"><div class="rec-title"><h2 id="recTitle">Blaker</h2><span id="recCount"></span></div><div class="statchips" id="recStats"></div><div class="rec-tools" id="recTools"></div><div id="onThisDay"></div><div class="rec-grid" id="recGrid"></div></div>
+  <div class="records" id="records"><div class="rec-title"><h2 id="recTitle">Blaker</h2><span id="recCount"></span></div><div class="statchips" id="recStats"></div><div id="healthNote"></div><div class="rec-tools" id="recTools"></div><div id="onThisDay"></div><div class="rec-grid" id="recGrid"></div></div>
 </div>
 
 <aside class="panel" id="panel" role="complementary"><div class="panel-head" id="panelHead"></div><div class="panel-body" id="panelBody"></div><div class="panel-foot" id="panelFoot" style="display:none"></div></aside>
@@ -775,6 +782,15 @@ const yearOf = v=>{ const m=String(v??'').match(/-?\d{3,4}/); return m?m[0]:null
 const ageOf = p=>{ const b=Number(yearOf(p.born)); if(!b) return null;
   const e=isLiving(p)?new Date().getFullYear():Number(yearOf(p.died));
   return (e&&e>=b&&e-b<130)?e-b:null; };
+/* plausibility check for a born/died pair (returns a message or null) */
+function dateProblem(bornVal, diedVal){
+  const cy=new Date().getFullYear();
+  const by=Number(yearOf(bornVal)), dy=Number(yearOf(diedVal));
+  if(bornVal && by && (by>cy || by<1)) return 'That birth year can’t be right — it’s in the future.';
+  if(diedVal && dy && (dy>cy || dy<1)) return 'That death year can’t be right — it’s in the future.';
+  if(by && dy && dy<by) return 'Death year is before the birth year.';
+  return null;
+}
 const dval = v=> v==null?null:(settings.yearOnly?(yearOf(v)??v):v);
 const dates = p=> p.died==null ? ('b. '+(dval(p.born)||'—')) : ((dval(p.born)||'—')+'–'+dval(p.died));
 const initials = n=>String(n||'').trim().split(/\s+/).filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
@@ -992,11 +1008,11 @@ function renderAnc(){
 function renderTimeline(){
   g.selectAll('*').remove(); addDefs();
   const nowY=new Date().getFullYear();
-  const rows=approvedOf(state.familyId)
-    .map(p=>({p, b:Number(yearOf(p.born)), d:isLiving(p)?nowY:Number(yearOf(p.died))}))
-    .filter(r=>r.b>0 && r.d>=r.b)
-    .sort((a,b)=>a.b-b.b || a.p.name.localeCompare(b.p.name));
-  if(!rows.length){ $('#hintchip').textContent='No dated kin yet — add birth years and they appear here.'; return; }
+  const all=approvedOf(state.familyId).map(p=>({p, b:Number(yearOf(p.born)), d:isLiving(p)?nowY:Number(yearOf(p.died))}));
+  const rows=all.filter(r=>r.b>0 && r.d>=r.b && r.b<=nowY).sort((a,b)=>a.b-b.b || a.p.name.localeCompare(b.p.name));
+  const undated=all.filter(r=>!(r.b>0 && r.d>=r.b && r.b<=nowY));
+  window._tlUndated=undated;  // consumed by the undated strip below
+  if(!rows.length){ $('#hintchip').textContent='No dated kin yet — add birth years and they appear here.'; }
   const y0=Math.floor(Math.min(...rows.map(r=>r.b))/10)*10, y1=Math.ceil(Math.max(...rows.map(r=>r.d))/10)*10;
   const PX=7, rowH=32, H=rows.length*rowH;
   const X=yr=>(yr-y0)*PX;
@@ -1019,6 +1035,21 @@ function renderTimeline(){
     if(settings.showDates && w>60) gg.append('text').attr('x',X(r.b)+9).attr('y',y+13.5).attr('fill','var(--muted)')
       .style('font','400 9.5px "JetBrains Mono",monospace').text(isLiving(r.p)?r.b+' –':r.b+'–'+r.d);
   });
+  // nobody vanishes: people without a usable birth year get a labelled band
+  const und=window._tlUndated||[];
+  if(und.length){
+    const bandY=H+30;
+    layer.append('text').attr('x',0).attr('y',bandY).attr('fill','var(--muted)').attr('letter-spacing','.1em')
+      .style('font','500 10px "JetBrains Mono",monospace').text(('No birth year yet ('+und.length+')').toUpperCase());
+    und.forEach((r,i)=>{
+      const cw=150, per=Math.max(1,Math.floor((y1-y0)*PX/cw)||4);
+      const gx=(i%per)*cw, gy=bandY+22+Math.floor(i/per)*30;
+      const gg=layer.append('g').attr('class','node-g').attr('transform',`translate(${gx},${gy})`).on('click',(e)=>{e.stopPropagation(); openPerson(r.p.id);});
+      gg.append('rect').attr('x',0).attr('y',-14).attr('width',cw-12).attr('height',22).attr('rx',11)
+        .attr('fill','url(#plateGrad)').attr('stroke','var(--line)').attr('stroke-dasharray','4 3');
+      gg.append('text').attr('x',12).attr('y',1).attr('fill','var(--bone-dim)').style('font','500 11px Fraunces,serif').text(trunc(r.p.name,18));
+    });
+  }
   reveal(); fitView();
 }
 
@@ -1044,6 +1075,34 @@ function renderOnThisDay(){
   if(!items.length){ box.innerHTML=''; return; }
   const label={birthday:'🎂 Birthday today',born:'Born today',remembered:'Remembered today'};
   box.innerHTML=`<div class="statchips" style="margin-bottom:16px">${items.map(it=>`<span style="cursor:pointer" onclick="openPerson('${htmlId(it.p.id)}')"><b>${esc(label[it.kind])}</b> · ${esc(it.p.name)}</span>`).join('')}</div>`;
+}
+/* ---- family health: nobody unconnected, no impossible dates ---- */
+function familyHealth(fid){
+  const list=approvedOf(fid); const ids=new Set(list.map(p=>p.id));
+  const issues=[];
+  list.forEach(p=>{
+    const dp=dateProblem(p.born,p.died); if(dp) issues.push({p, why:dp});
+  });
+  // disconnected: no parents, no partner, no children — a floating record
+  if(list.length>1){
+    list.forEach(p=>{
+      const hasParent=!!p.childOf && U(p.childOf) && ([U(p.childOf).a,U(p.childOf).b].some(x=>x&&ids.has(x)));
+      const hasUnion=unionsOf(p.id).some(u=>u.status==='approved' && [u.a,u.b].some(x=>x&&x!==p.id&&ids.has(x)));
+      const hasChild=childrenOf(p.id).some(k=>k.status==='approved');
+      if(!hasParent && !hasUnion && !hasChild) issues.push({p, why:'Not linked to anyone yet — add a parent, partner, or child.'});
+    });
+  }
+  return issues;
+}
+function renderHealth(){
+  const box=$('#healthNote'); if(!box) return;
+  const canFix = REMOTE ? canEditHere() : true;
+  const issues=canFix?familyHealth(state.familyId):[];
+  if(!issues.length){ box.innerHTML=''; box.style.display='none'; return; }
+  box.style.display='block';
+  box.innerHTML=`<div class="health"><b>${issues.length} record${issues.length>1?'s need':' needs'} attention</b>
+    <div class="hrows">${issues.slice(0,8).map(it=>`<button onclick="openPerson('${htmlId(it.p.id)}')"><span>${esc(it.p.name)}</span> <i>${esc(it.why)}</i></button>`).join('')}</div>
+    ${issues.length>8?`<div class="hmore">+${issues.length-8} more</div>`:''}</div>`;
 }
 function exportCSV(){
   const rows=[['Name','Born','Died','Occupation','Place','Note']];
@@ -1080,6 +1139,7 @@ function renderRecords(){
   const st=familyStats(state.familyId);
   $('#recStats').innerHTML=[`<b>${st.total}</b> kin`,`<b>${st.living}</b> living`,`<b>${st.unions}</b> unions`,
     st.span?`born <b>${esc(st.span)}</b>`:null, st.avg?`avg lifespan <b>${st.avg}</b>`:null].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
+  renderHealth();
   $('#recGrid').innerHTML = list.map(p=>{
     const partner=primaryPartner(p.id);
     const cross = p.familyId!==state.familyId;
@@ -1270,6 +1330,7 @@ async function submitKin(){
   const born=parseDateValue($('#f_born').value), died=parseDateValue($('#f_died').value);
   if($('#f_born').value.trim() && born==null){ toast('Born must be a year or date.'); return; }
   if($('#f_died').value.trim() && died==null){ toast('Died must be a year or date.'); return; }
+  const dp=dateProblem(born,died); if(dp){ toast(esc(dp)); return; }
   if(REMOTE){
     if(!ME.user){ toast('Sign in to add kin.'); openAccount(); return; }
     try{
@@ -1329,6 +1390,7 @@ async function saveEdit(id){
   const born=parseDateValue($('#e_born').value), died=parseDateValue($('#e_died').value);
   if($('#e_born').value.trim() && born==null){ toast('Born must be a year or date.'); return; }
   if($('#e_died').value.trim() && died==null){ toast('Died must be a year or date.'); return; }
+  const dp=dateProblem(born,died); if(dp){ toast(esc(dp)); return; }
   if(REMOTE){
     try{
       const d=await api('/persons/'+encodeURIComponent(id),{method:'PATCH',
