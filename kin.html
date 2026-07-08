@@ -1317,10 +1317,70 @@ function openAdd(relation, anchorId){
     <div class="field"><label>Note (optional)</label><textarea class="finput" id="f_bio" placeholder="A line or two…"></textarea></div>
     <div class="field"><label>Link or contact (optional)</label><input class="finput" id="f_link" placeholder="https://…  or  name@email.com"></div>
     <input type="hidden" id="f_rel" value="${esc(relation)}"><input type="hidden" id="f_anchor" value="${htmlId(anchorId||'')}">
+    <div id="f_dupe"></div>
     <p class="hint">${REMOTE&&!ME.user?'Sign in to submit — records belong to real accounts here.':canEditHere()?'Your additions appear in the tree straight away.':'Submissions join the approval queue — a family admin reviews before it appears.'}</p>`;
   $('#panelFoot').style.display='flex';
   $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="closePanel()">Cancel</button><button class="btn-fill" onclick="submitKin()">${canEditHere()?'Add to tree':'Submit for approval'}</button>`;
   $('#panel').classList.add('open'); setTimeout(()=>$('#f_name')?.focus(),320);
+  if(REMOTE && ['partner','parent','child'].includes(relation)){
+    const banner=`<div class="hint" style="margin:-6px 0 14px;padding:10px 12px;background:var(--ink-3);border:1px solid var(--line);border-radius:9px">
+      Already in another family tree? <button style="color:var(--gold);text-decoration:underline" onclick="openLink('${esc(relation)}','${htmlId(anchorId||'')}')">Link them instead of retyping →</button></div>`;
+    $('#panelBody').insertAdjacentHTML('afterbegin',banner);
+    const ni=$('#f_name'); if(ni) ni.oninput=()=>dupeCheck(ni.value);
+  }
+}
+/* proactive duplicate detection — steer toward linking, not copying */
+let _dupeTimer=null;
+function dupeCheck(q){
+  clearTimeout(_dupeTimer); const box=$('#f_dupe'); if(!box) return;
+  if(!q || q.trim().length<3){ box.innerHTML=''; return; }
+  _dupeTimer=setTimeout(async()=>{
+    try{
+      const d=await api('/search?q='+encodeURIComponent(q.trim()));
+      const rel=$('#f_rel')?.value, anchor=$('#f_anchor')?.value;
+      const hits=(d.results||[]).filter(r=>r.id!==anchor).slice(0,4);
+      if(!hits.length){ box.innerHTML=''; return; }
+      box.innerHTML=`<div class="hint" style="margin:-4px 0 14px;padding:10px 12px;background:rgba(201,168,99,.08);border:1px solid var(--gold-soft);border-radius:9px">
+        <b style="color:var(--gold)">Possible match already in Kin</b> — link instead of creating a duplicate:
+        ${hits.map(r=>`<button style="display:block;margin-top:7px;text-align:left;color:var(--bone)" onclick="linkPerson('${esc(rel)}','${htmlId(anchor)}','${htmlId(r.id)}')">→ ${esc(r.name)} <span style="color:var(--muted)">· ${esc((DB.families[r.familyId]||{}).name||r.familyId)}${r.born?' · b. '+esc(String(r.born)):''}</span></button>`).join('')}</div>`;
+    }catch{}
+  },250);
+}
+function openLink(relation, anchorId){
+  const titles={child:'Link an existing child',partner:'Link an existing partner',parent:'Link an existing parent'};
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>${esc(titles[relation]||'Link a person')}</h2><div class="pv-dates" style="color:var(--muted)">Joins two trees — the person keeps their own family</div>`;
+  $('#panelBody').innerHTML=`
+    <p class="hint">Search everyone you can see across all families. Linking makes it <b>one shared person</b> — edits on either side stay in sync.</p>
+    <div class="field"><input class="finput" id="lk_q" placeholder="Search by name, place, occupation…" autocomplete="off"></div>
+    <input type="hidden" id="lk_rel" value="${esc(relation)}"><input type="hidden" id="lk_anchor" value="${htmlId(anchorId)}">
+    ${relation==='partner'?`<div class="field"><label>Relationship</label><select class="finput" id="lk_type"><option value="marriage">Marriage</option><option value="partnership">Partnership</option></select></div>`:''}
+    <div id="lk_results"></div>`;
+  $('#panelFoot').style.display='flex';
+  $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="openAdd('${esc(relation)}','${htmlId(anchorId)}')">← Back to add new</button>`;
+  const q=$('#lk_q'); setTimeout(()=>q?.focus(),120); q.oninput=()=>linkSearch(q.value);
+}
+let _lkTimer=null;
+function linkSearch(q){
+  clearTimeout(_lkTimer); const box=$('#lk_results'); if(!box) return;
+  if(!q || q.trim().length<2){ box.innerHTML='<div class="empty">Type at least two letters.</div>'; return; }
+  _lkTimer=setTimeout(async()=>{
+    try{
+      const d=await api('/search?q='+encodeURIComponent(q.trim()));
+      const anchor=$('#lk_anchor')?.value;
+      const hits=(d.results||[]).filter(r=>r.id!==anchor);
+      box.innerHTML = hits.length ? `<div class="rel-list">${hits.map(r=>`<button class="rel" onclick="linkPerson($('#lk_rel').value,'${htmlId(anchor)}','${htmlId(r.id)}')">
+        <span class="rav">${esc(initials(r.name))}</span><span class="rn">${esc(r.name)}<br><span style="color:var(--muted);font-size:11px">${esc((DB.families[r.familyId]||{}).name||r.familyId)}${r.born?' · b. '+esc(String(r.born)):''}${r.occupation?' · '+esc(r.occupation):''}</span></span><span class="rr">Link</span></button>`).join('')}</div>`
+        : '<div class="empty">No matches you can see.</div>';
+    }catch(e){ box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'; }
+  },250);
+}
+async function linkPerson(relation, anchorId, targetId){
+  const type=$('#lk_type')?.value||'marriage';
+  try{
+    const d=await api('/persons/'+htmlId(anchorId)+'/link',{method:'POST',body:{targetId, relation, type}});
+    closePanel(); await loadFamily(state.familyId); await loadPending(); render();
+    toast(d.already?'They were already linked.':d.crossFamily?'Trees joined — this person now appears in both.':'Linked.');
+  }catch(e){ toast(esc(e.message)); }
 }
 async function submitKin(){
   const name=$('#f_name').value.trim(); if(!name){ toast('A name is needed.'); return; }
