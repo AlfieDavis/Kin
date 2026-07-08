@@ -624,7 +624,46 @@ async function emailAuth(mode){
     if(mode==='register') await api('/auth/register',{method:'POST',body:{email,password,name:($('#au_name')?.value||'').trim()}});
     else await api('/auth/login',{method:'POST',body:{email,password}});
     await afterAuth();
+    if(mode==='register' && ME.user && !ME.user.emailVerified) toast('Account created — check your inbox to verify your email.');
   }catch(e){ err.textContent=e.message; }
+}
+/* ---- email verification, password reset, account deletion ---- */
+async function resendVerification(){
+  try{ await api('/auth/resend-verification',{method:'POST'}); toast('Verification email sent — check your inbox.'); }
+  catch(e){ toast(esc(e.message)); }
+}
+async function forgotPassword(){
+  const email=($('#au_email')?.value||'').trim() || prompt('Which email address?')||'';
+  if(!email.trim()) return;
+  try{ await api('/auth/forgot',{method:'POST',body:{email:email.trim()}});
+    toast('If that address has an account, a reset link is on its way.'); }
+  catch(e){ toast(esc(e.message)); }
+}
+function openResetForm(token){
+  $('#modal').innerHTML=`<div class="clasp"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+    <h2>Choose a new password</h2><p class="sub">This link works once and signs you in everywhere fresh — old sessions are closed.</p>
+    <input class="finput" id="rp_pass" type="password" placeholder="New password (8+ characters)" autocomplete="new-password"><div class="err" id="rp_err"></div>
+    <div style="display:flex; gap:10px; margin-top:6px"><button class="btn-ghost" onclick="closeGate()">Cancel</button><button class="btn-fill" onclick="doReset('${htmlId(token)}')">Set password</button></div>`;
+  $('#scrim').classList.add('show'); setTimeout(()=>$('#rp_pass')?.focus(),100);
+  $('#rp_pass').onkeydown=e=>{ if(e.key==='Enter') doReset(token); };
+}
+async function doReset(token){
+  const err=$('#rp_err');
+  try{
+    await api('/auth/reset',{method:'POST',body:{token, password:$('#rp_pass').value}});
+    closeGate(); history.replaceState(null,'',location.pathname);
+    await loadMe(); await refreshRemote();
+    toast('Password set — you are signed in.');
+  }catch(e){ err.textContent=e.message; }
+}
+async function deleteAccount(){
+  const confirmEmail=prompt('This deletes your account, roles, and sessions. Records you added stay in their families. Type your account email to confirm:');
+  if(!confirmEmail) return;
+  try{
+    await api('/me',{method:'DELETE',body:{confirmEmail:confirmEmail.trim()}});
+    ME={user:null,memberships:[],grants:[]};
+    await refreshRemote(); renderAccount(); toast('Your account has been deleted.');
+  }catch(e){ toast(esc(e.message)); }
 }
 async function saveProfile(){
   const name=$('#pf_name').value.trim(); if(!name) return;
@@ -653,13 +692,17 @@ function renderAccount(){
   if(ME.user){
     const roles=(ME.memberships||[]).map(m=>`<div class="memrow"><div class="mav">${esc((DB.families[m.family_id]||{}).crest||'?')}</div><div><div class="mn">${esc((DB.families[m.family_id]||{}).name||m.family_id)}</div><div class="me">${esc(m.role)}</div></div></div>`).join('');
     $('#panelBody').innerHTML=`
+      ${!ME.user.emailVerified?`<div class="pv-tag" style="border-color:var(--rust);color:var(--rust);margin:0 0 10px;display:flex">Email not verified — invitations and roles wait until it is</div>
+        <button class="btn-ghost" style="width:100%;margin-bottom:18px" onclick="resendVerification()">Resend verification email</button>`:''}
       <div class="pv-av">${avatarHtml(60,15)}</div>
       <div class="field"><label>Signed in as</label><p><span class="mono" style="font-size:12px;color:var(--muted)">${esc(ME.user.email)}</span></p></div>
       <div class="field"><label>Display name</label>
         <div style="display:flex;gap:8px"><input class="finput" id="pf_name" value="${esc(ME.user.name||'')}"><button class="btn-ghost" style="flex:none;padding:0 15px" onclick="saveProfile()">Save</button></div></div>
       ${ME.user.isSuper?'<div class="pv-tag" style="border-color:var(--gold);color:var(--gold)">Superadmin — every family, every action</div>':''}
       ${roles?`<div class="divlabel">My families</div>${roles}`:'<p class="hint">No family roles yet — open a family and request access, or request a new line from the directory.</p>'}
-      <button class="btn-ghost" style="width:100%;margin-top:18px" onclick="signOut()">Sign out</button>`;
+      <button class="btn-ghost" style="width:100%;margin-top:18px" onclick="signOut()">Sign out</button>
+      <div class="divlabel">Danger</div>
+      <button class="btn-ghost" style="width:100%;color:var(--rust)" onclick="deleteAccount()">Delete my account…</button>`;
     return;
   }
   $('#panelBody').innerHTML=`
@@ -672,7 +715,8 @@ function renderAccount(){
     <div class="field"><label>Password${authMode==='register'?' (8+ characters)':''}</label><input class="finput" id="au_pass" type="password" autocomplete="${authMode==='register'?'new-password':'current-password'}"></div>
     <div class="err" id="au_err" style="text-align:left;margin:0 0 10px"></div>
     <button class="btn-fill" style="width:100%" onclick="emailAuth('${authMode==='register'?'register':'login'}')">${authMode==='register'?'Create account':'Sign in'}</button>
-    <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="setAuthMode('${authMode==='register'?'signin':'register'}')">${authMode==='register'?'I already have an account':'Create a new account'}</button>`;
+    <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="setAuthMode('${authMode==='register'?'signin':'register'}')">${authMode==='register'?'I already have an account':'Create a new account'}</button>
+    ${authMode==='register'?'':'<button class="btn-ghost" style="width:100%;margin-top:10px;border:none;background:none;color:var(--muted);font-size:12.5px" onclick="forgotPassword()">Forgot password?</button>'}`;
   const pw=$('#au_pass'); if(pw) pw.onkeydown=e=>{ if(e.key==='Enter') emailAuth(authMode==='register'?'register':'login'); };
 }
 
@@ -1827,6 +1871,17 @@ window.onresize=()=>{ if(state.view!=='records') fitView(); };
     initFirebase();
     await loadMe();
     await finishRedirectSignIn();
+    /* emailed links: #/verify/<token> and #/reset/<token> */
+    const authLink=location.hash.match(/^#\/(verify|reset)\/([A-Za-z0-9_-]{10,})$/);
+    if(authLink){
+      history.replaceState(null,'',location.pathname);
+      if(authLink[1]==='verify'){
+        try{ await api('/auth/verify',{method:'POST',body:{token:authLink[2]}}); await loadMe(); toast('Email verified — invitations and roles are now active.'); }
+        catch(e){ toast(esc(e.message)); }
+      } else {
+        setTimeout(()=>openResetForm(authLink[2]),400);
+      }
+    }
     try{ await loadDirectory(); }catch{ REMOTE=false; }
   }
   const deepLink=parseHash();
