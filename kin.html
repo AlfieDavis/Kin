@@ -4,7 +4,7 @@
 <!-- Kin - genealogy prototype (graph model: persons + unions). Single file, in-memory. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://lh3.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://lh3.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://apis.google.com; frame-src 'self' https://epoch-d1d71.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="Kin — a family record. Browse genealogy as a graph: descendant trees, ancestor charts, and a relationship finder.">
 <meta name="color-scheme" content="dark light">
@@ -435,7 +435,15 @@ function rebuildGraph(){
     fd.unions.forEach(u=>{ DB.unions[u.id]={...u}; });
   });
 }
-async function loadMe(){ try{ ME=await api('/me'); }catch{ ME={user:null,memberships:[],grants:[]}; } $('#accountBtn').classList.toggle('on', !!ME.user); }
+const ACCOUNT_ICON='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+async function loadMe(){
+  try{ ME=await api('/me'); }catch{ ME={user:null,memberships:[],grants:[]}; }
+  const btn=$('#accountBtn');
+  btn.classList.toggle('on', !!ME.user);
+  btn.innerHTML = (ME.user&&ME.user.photo) ? `<img src="${esc(ME.user.photo)}" alt="" style="width:22px;height:22px;border-radius:50%">`
+    : (ME.user ? `<span style="font-family:'Fraunces',serif;font-size:13px">${esc(initials(ME.user.name||ME.user.email))}</span>` : ACCOUNT_ICON);
+  btn.title = ME.user ? (ME.user.name||ME.user.email) : 'Account';
+}
 async function loadPending(){
   PENDINGDATA=null; FAMREQS=[];
   if(REMOTE && isAdminHere()){
@@ -465,16 +473,40 @@ function initFirebase(){
 }
 async function googleSignIn(){
   if(!fbAuth){ toast('Google sign-in is not available here.'); return; }
+  const provider=new firebase.auth.GoogleAuthProvider();
   try{
-    const cred=await fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    const cred=await fbAuth.signInWithPopup(provider);
     const idToken=await cred.user.getIdToken();
     await api('/auth/google',{method:'POST',body:{idToken}});
     await afterAuth();
-  }catch(e){ const el=$('#au_err'); if(el) el.textContent=e.message||'Sign-in failed.'; }
+  }catch(e){
+    if(['auth/popup-blocked','auth/internal-error','auth/operation-not-supported-in-this-environment'].includes(e.code)){
+      try{ await fbAuth.signInWithRedirect(provider); return; }catch{}
+    }
+    if(e.code==='auth/popup-closed-by-user' || e.code==='auth/cancelled-popup-request') return;
+    const el=$('#au_err'); if(el) el.textContent=e.message||'Sign-in failed.'; else toast(esc(e.message||'Sign-in failed.'));
+  }
 }
+async function finishRedirectSignIn(){
+  if(!fbAuth || ME.user) return;
+  try{
+    const rr=await fbAuth.getRedirectResult();
+    if(rr && rr.user){
+      const idToken=await rr.user.getIdToken();
+      await api('/auth/google',{method:'POST',body:{idToken}});
+      await loadMe();
+      toast('Signed in as '+strong(ME.user.name||ME.user.email)+'.');
+    }
+  }catch{}
+}
+const ROLE_RANK={owner:4,admin:3,editor:2,viewer:1};
+const myFamilies=()=>Object.values(DB.families).filter(f=>f.myRole).sort((a,b)=>(ROLE_RANK[b.myRole]||0)-(ROLE_RANK[a.myRole]||0));
 async function afterAuth(){
   closeGate(); await loadMe(); await refreshRemote(); renderAccount();
   toast('Signed in as '+strong(ME.user.name||ME.user.email)+'.');
+  /* land on the family you belong to, not the demo */
+  const mine=myFamilies();
+  if(mine.length && !myRole(state.familyId)) await switchFamily(mine[0].id);
 }
 async function emailAuth(mode){
   const err=$('#au_err'); err.textContent='';
@@ -837,6 +869,7 @@ async function switchFamily(id){
   if(!f) return;
   if(!hasAccess(id)){ openGate(id); return; }
   state.familyId=id; state.descRoot=null; state.ancFocus=null; state.query=''; $('#search').value=''; closePanel();
+  try{ localStorage.setItem('kin.lastFamily', id); }catch{}
   if(REMOTE && !FAMDATA[id]){ toast(`Opening ${strong(f.name)}…`); try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
   if(REMOTE){ PENDINGDATA=null; MEMBERS=null; loadPending(); }
   render();
@@ -1048,6 +1081,7 @@ function renderDirectory(){
 async function openFamily(id){ const f=DB.families[id]; if(!f) return; if(!hasAccess(id)){ openGate(id); return; }
   if(!REMOTE){ unlocked.add(id); rememberUnlocked(); }
   state.familyId=id; state.descRoot=null; state.ancFocus=null; closePanel();
+  try{ localStorage.setItem('kin.lastFamily', id); }catch{}
   if(REMOTE && !FAMDATA[id]){ try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
   if(REMOTE){ PENDINGDATA=null; MEMBERS=null; loadPending(); }
   render(); toast(`${strong(f.name)} opened.`); }
@@ -1546,11 +1580,16 @@ window.onresize=()=>{ if(state.view!=='records') fitView(); };
   if(REMOTE){
     initFirebase();
     await loadMe();
+    await finishRedirectSignIn();
     try{ await loadDirectory(); }catch{ REMOTE=false; }
   }
   if(REMOTE){
-    if(!DB.families[state.familyId]) state.familyId=Object.keys(DB.families)[0];
-    if(!hasAccess(state.familyId)){ const open=Object.values(DB.families).find(f=>f.canView); if(open) state.familyId=open.id; }
+    /* landing family: last visited → highest role → first open → first */
+    let target=null;
+    try{ const last=localStorage.getItem('kin.lastFamily'); if(last && DB.families[last] && hasAccess(last)) target=last; }catch{}
+    if(!target){ const mine=myFamilies(); if(mine.length) target=mine[0].id; }
+    if(!target){ const open=Object.values(DB.families).find(f=>f.canView); target=open?open.id:Object.keys(DB.families)[0]; }
+    state.familyId=target;
     try{ await loadFamily(state.familyId); }catch{}
     await loadPending();
   }
