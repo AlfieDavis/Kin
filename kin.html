@@ -1076,9 +1076,12 @@ function renderLocked(f){
   updateAdminSeal();
 }
 function buildSwitcher(){
-  /* pinned families + the current one — the directory holds the rest, searchable */
+  /* pinned families + real memberships + the current one — the directory holds
+     the rest. Note: NOT myRole — the superadmin "owns" every family, and
+     auto-including them all would make pins meaningless for them. */
   const all=Object.values(DB.families);
-  let show=all.filter(f=>isPinned(f)||f.id===state.familyId||(REMOTE&&f.myRole));
+  const memberOf=new Set((ME.memberships||[]).map(m=>m.family_id));
+  let show=all.filter(f=>isPinned(f)||f.id===state.familyId||(REMOTE&&memberOf.has(f.id)));
   if(!show.length) show=all.slice(0,2);
   show=[...new Set(show)].slice(0,6);
   const more=all.length-show.length;
