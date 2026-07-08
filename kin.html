@@ -670,6 +670,26 @@ async function saveProfile(){
   try{ await api('/me',{method:'PATCH',body:{name}}); await loadMe(); renderAccount(); toast('Name updated.'); }
   catch(e){ toast(esc(e.message)); }
 }
+async function signOutEverywhere(){
+  if(settings.confirmDanger && !confirm('Sign out on every device and browser where you are logged in?')) return;
+  try{ await api('/auth/logout-all',{method:'POST'}); }catch{}
+  if(fbAuth) fbAuth.signOut().catch(()=>{});
+  ME={user:null,memberships:[],grants:[]};
+  $('#accountBtn').classList.remove('on');
+  await refreshRemote(); renderAccount(); toast('Signed out everywhere.');
+}
+async function downloadServerBackup(){
+  try{
+    const res=await fetch('/api/kin/backup',{credentials:'same-origin'});
+    if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error||'Backup failed.');
+    const blob=await res.blob();
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=`kin-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },400);
+    toast('Full backup downloaded — keep it somewhere safe.');
+  }catch(e){ toast(esc(e.message)); }
+}
 async function signOut(){
   try{ await api('/auth/logout',{method:'POST'}); }catch{}
   if(fbAuth) fbAuth.signOut().catch(()=>{});
@@ -701,8 +721,13 @@ function renderAccount(){
       ${ME.user.isSuper?'<div class="pv-tag" style="border-color:var(--gold);color:var(--gold)">Superadmin — every family, every action</div>':''}
       ${roles?`<div class="divlabel">My families</div>${roles}`:'<p class="hint">No family roles yet — open a family and request access, or request a new line from the directory.</p>'}
       <button class="btn-ghost" style="width:100%;margin-top:18px" onclick="signOut()">Sign out</button>
+      <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="signOutEverywhere()">Sign out everywhere</button>
+      ${ME.user.isSuper?`<div class="divlabel">Superadmin</div>
+        <button class="btn-ghost" style="width:100%" onclick="downloadServerBackup()">Download full backup (all families + photos)</button>
+        <p class="hint" style="margin-top:8px">A copy also arrives by email every Monday. D1 Time Travel keeps 30 days of point-in-time restore on top.</p>`:''}
       <div class="divlabel">Danger</div>
-      <button class="btn-ghost" style="width:100%;color:var(--rust)" onclick="deleteAccount()">Delete my account…</button>`;
+      <button class="btn-ghost" style="width:100%;color:var(--rust)" onclick="deleteAccount()">Delete my account…</button>
+      <p class="hint" style="margin-top:14px">Privacy: living people's contact details are visible to family members only. Export your data anytime; deleting your account removes your roles and sessions while records stay with their families.</p>`;
     return;
   }
   $('#panelBody').innerHTML=`
