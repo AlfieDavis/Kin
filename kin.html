@@ -101,7 +101,8 @@ input,textarea,select{font-family:inherit}
 .rec-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:16px; max-width:1200px; margin:0 auto}
 .plate{background:var(--ink-2); border:1px solid var(--line); border-radius:14px; padding:18px; transition:.18s; position:relative; text-align:left}
 .plate:hover{border-color:var(--gold-soft); transform:translateY(-2px); box-shadow:var(--shadow)}
-.plate .av{width:44px; height:44px; border-radius:11px; display:grid; place-items:center; font-family:'Fraunces',serif; font-size:19px; color:var(--ink); background:var(--gold); margin-bottom:12px}
+.plate .av{width:44px; height:44px; border-radius:11px; display:grid; place-items:center; font-family:'Fraunces',serif; font-size:19px; color:var(--ink); background:var(--gold); margin-bottom:12px; overflow:hidden}
+.av img, .pv-av img, .rel .rav img{width:100%; height:100%; object-fit:cover; border-radius:inherit}
 .plate .live{width:7px; height:7px; border-radius:50%; background:var(--verd); display:inline-block; margin-right:7px; vertical-align:middle}
 .plate h3{font-family:'Fraunces',serif; font-weight:500; font-size:19px; margin:0 0 4px}
 .plate .dates{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted); margin-bottom:10px}
@@ -318,6 +319,7 @@ html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 
 <div class="scrim" id="scrim"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+<input type="file" id="photoFile" accept="image/*" style="display:none">
 
 <div class="welcome" id="welcome" role="dialog" aria-modal="true" aria-label="Welcome to Kin">
   <div class="w-card">
@@ -360,7 +362,7 @@ const DB = {
 
 /* seed helpers */
 let _pid=0,_uid=0;
-function person(id,familyId,name,born,died,bio,extra={}){ DB.persons[id]={id,familyId,name,born,died,bio,links:extra.links||[],contacts:extra.contacts||[],childOf:extra.childOf||null,status:extra.status||'approved'}; return id; }
+function person(id,familyId,name,born,died,bio,extra={}){ DB.persons[id]={id,familyId,name,born,died,bio,occupation:extra.occ||null,place:extra.place||null,links:extra.links||[],contacts:extra.contacts||[],childOf:extra.childOf||null,status:extra.status||'approved'}; return id; }
 function union(id,a,b,extra={}){ DB.unions[id]={id,a,b,type:extra.type||'marriage',status:extra.status||'approved'}; return id; }
 
 /* ---- Blaker starting point ---- */
@@ -412,6 +414,18 @@ person('h_otis','harrow','Otis Harrow',2016,null,'Collects snail shells and fact
 person('h_nell','harrow','Nell Harrow',2019,null,'The newest leaf on the tree.',{childOf:'hu7'});
 person('h_amara','harrow','Amara Osei',1987,null,'Epidemiologist. Sophie\'s partner.');
 union('hu8','h_sophie','h_amara',{type:'partnership'});
+/* trades and places, so records read like records */
+[['h_josiah','Wheelwright','Lewes, Sussex'],['h_clara','Shopkeeper','Lewes, Sussex'],['h_florence','Beekeeper','Lewes, Sussex'],
+ ['h_wilfred','Printer','Brighton'],['h_ivy','Seamstress','Brighton'],['h_edmund','Clockmaker','Lewes, Sussex'],
+ ['h_rose','Postmistress','Lewes, Sussex'],['h_arthur','Bookseller','Rye'],['h_margaret','Schoolteacher','Rye'],
+ ['h_vera','Cellist','Manchester'],['h_gordon','Violinist','Manchester'],['h_thomas','Engineer','Bristol'],
+ ['h_eleanor','Painter','St Ives'],['h_coral','Sculptor','St Ives'],['h_grace','Botanist','Bristol'],
+ ['h_roger','Clock restorer','Lewes, Sussex'],['h_lin','Horologist','Lewes, Sussex'],['h_ken','Watchmaker','London'],
+ ['h_clive','Luthier','Manchester'],['h_priya','Conductor','Manchester'],['h_heather','Orchestral violinist','On tour, mostly'],
+ ['h_ravi','Sound engineer','London'],['h_mira','Violin teacher','Manchester'],['h_daniel','Software engineer','Bristol'],
+ ['h_femke','Cartographer','Bristol'],['h_otis',null,'Bristol'],['h_nell',null,'Bristol'],
+ ['h_sophie','Doctor','Cardiff'],['h_amara','Epidemiologist','Cardiff'],
+].forEach(([id,occ,place])=>{ const p=DB.persons[id]; if(p){ p.occupation=occ; p.place=place; } });
 
 /* ================================================================
    state + helpers
@@ -688,6 +702,8 @@ const dval = v=> v==null?null:(settings.yearOnly?(yearOf(v)??v):v);
 const dates = p=> p.died==null ? ('b. '+(dval(p.born)||'—')) : ((dval(p.born)||'—')+'–'+dval(p.died));
 const initials = n=>String(n||'').trim().split(/\s+/).filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
 const trunc=(s,n)=> s && s.length>n ? s.slice(0,n-1)+'…':s;
+const photoSrc = p=> p.photoData ? p.photoData : ((typeof REMOTE!=='undefined'&&REMOTE&&p.hasPhoto) ? `/api/kin/photos/${htmlId(p.id)}?v=${htmlId(String(p.photoVer||'0'))}` : null);
+const avFor = p=>{ const src=photoSrc(p); return src?`<img src="${esc(src)}" alt="" loading="lazy">`:esc(initials(p.name)); };
 const membersOf = fid=>Object.values(DB.persons).filter(p=>p.familyId===fid);
 const approvedOf = fid=>membersOf(fid).filter(p=>p.status==='approved');
 const unionsOf = pid=>Object.values(DB.unions).filter(u=>u.a===pid||u.b===pid);
@@ -799,6 +815,7 @@ function renderDesc(){
   });
   reveal(); fitView();
 }
+let _clipSeq=0;
 function plate(sel,p,married){
   const gg=sel.attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(p.id);});
   const pl=gg.append('g').attr('class','node-plate');
@@ -806,10 +823,19 @@ function plate(sel,p,married){
     .attr('fill','url(#plateGrad)').attr('stroke','var(--line)').attr('stroke-width',1).attr('filter','url(#plateShadow)');
   pl.append('rect').attr('x',-PW/2).attr('y',-PH/2+8).attr('width',3).attr('height',PH-16).attr('rx',1.5)
     .attr('fill', (settings.livingMarker&&isLiving(p))?'var(--verd)':'var(--gold)').attr('opacity',.95);
-  const nameChars=Math.round(17*PW/158);
-  pl.append('text').attr('x',-PW/2+17).attr('y',settings.showDates?-3:4).attr('fill','var(--bone)').style('font','500 13px Fraunces,serif').text(trunc(p.name,nameChars));
-  if(settings.showDates) pl.append('text').attr('x',-PW/2+17).attr('y',14).attr('fill','var(--muted)').style('font','400 10px "JetBrains Mono",monospace')
-    .text(trunc(dates(p)+(married?' · married in':''),Math.round(22*PW/158)));
+  const src=photoSrc(p);
+  let tx=-PW/2+17, chars=Math.round(17*PW/158);
+  if(src){
+    const cid='pclip'+(++_clipSeq), r=Math.min(15,PH/2-9);
+    pl.append('clipPath').attr('id',cid).append('circle').attr('cx',-PW/2+11+r).attr('cy',0).attr('r',r);
+    pl.append('image').attr('href',src).attr('x',-PW/2+11).attr('y',-r).attr('width',2*r).attr('height',2*r)
+      .attr('clip-path',`url(#${cid})`).attr('preserveAspectRatio','xMidYMid slice');
+    pl.append('circle').attr('cx',-PW/2+11+r).attr('cy',0).attr('r',r).attr('fill','none').attr('stroke','var(--gold-soft)').attr('stroke-width',1);
+    tx=-PW/2+17+2*r; chars=Math.round(13*PW/158);
+  }
+  pl.append('text').attr('x',tx).attr('y',settings.showDates?-3:4).attr('fill','var(--bone)').style('font','500 13px Fraunces,serif').text(trunc(p.name,chars));
+  if(settings.showDates) pl.append('text').attr('x',tx).attr('y',14).attr('fill','var(--muted)').style('font','400 10px "JetBrains Mono",monospace')
+    .text(trunc(dates(p)+(married?' · married in':''),Math.round((src?17:22)*PW/158)));
   return gg;
 }
 
@@ -935,9 +961,10 @@ function renderRecords(){
     const cross = p.familyId!==state.familyId;
     return `<button class="plate" onclick="openPerson('${htmlId(p.id)}')">
       ${cross?`<span class="fam-chip">${esc(DB.families[p.familyId].name)}</span>`:''}
-      <div class="av">${esc(initials(p.name))}</div>
+      <div class="av">${avFor(p)}</div>
       <h3>${esc(p.name)}</h3>
       <div class="dates">${isLiving(p)?'<i class="live"></i>':''}${esc(dates(p))}${partner?' · m. '+esc(partner.name.split(' ')[0]):''}</div>
+      ${(p.occupation||p.place)?`<div class="dates" style="margin:-6px 0 10px">${esc([p.occupation,p.place].filter(Boolean).join(' · '))}</div>`:''}
       <p>${esc(p.bio||'No note recorded yet.')}</p></button>`;
   }).join('') || `<div class="empty">No kin match "${esc(state.query)}".</div>`;
 }
@@ -1040,7 +1067,7 @@ function openPerson(id,opts={}){
   const canDelete = isAdminHere();
   $('#panel').classList.remove('wide');
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button>
-    <div class="pv-av">${esc(initials(p.name))}</div>
+    <div class="pv-av">${avFor(p)}</div>
     <h2>${esc(p.name)}</h2><div class="pv-dates">${esc(dates(p))}${(()=>{const a=ageOf(p); return a==null?'':isLiving(p)?` · age ${a}`:` · lived ${a} years`;})()}</div>
     <div class="pv-tag">${isLiving(p)?'<i class="dot" style="background:var(--verd)"></i> Living':'In memory'} · ${esc(DB.families[p.familyId].name)} line</div>
     ${p.status==='pending'?'<div class="pv-tag" style="border-color:var(--rust);color:var(--rust)">Pending approval</div>':''}`;
@@ -1057,6 +1084,8 @@ function openPerson(id,opts={}){
     ${REMOTE?`<button class="act full" onclick="copyPersonLink('${htmlId(id)}')">Copy link to this record</button>`:''}
   </div>`;
   state.lastPerson=id;
+  if(p.occupation) body+=`<div class="field"><label>Occupation</label><p>${esc(p.occupation)}</p></div>`;
+  if(p.place) body+=`<div class="field"><label>Place</label><p>${esc(p.place)}</p></div>`;
   if(p.bio) body+=`<div class="field"><label>Note</label><p>${esc(p.bio)}</p></div>`;
   (p.links||[]).forEach(l=>{ const url=safeUrl(l); if(url) body+=`<div class="field"><label>Link</label><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(l)}</a></div>`; });
   (p.contacts||[]).forEach(c=>{ const email=safeEmail(c); if(email) body+=`<div class="field"><label>Contact</label><a href="mailto:${esc(email)}">${esc(email)}</a></div>`; });
@@ -1070,7 +1099,7 @@ function openPerson(id,opts={}){
   $('#panel').classList.add('open');
 }
 const plus=()=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>`;
-function relRow(p,role){ return `<button class="rel" onclick="openPerson('${htmlId(p.id)}')"><span class="rav">${esc(initials(p.name))}</span><span class="rn">${esc(p.name)}${p.familyId!==state.familyId?' · '+esc(DB.families[p.familyId].name):''}</span><span class="rr">${esc(role)}</span></button>`; }
+function relRow(p,role){ return `<button class="rel" onclick="openPerson('${htmlId(p.id)}')"><span class="rav" style="overflow:hidden">${avFor(p)}</span><span class="rn">${esc(p.name)}${p.familyId!==state.familyId?' · '+esc(DB.families[p.familyId].name):''}</span><span class="rr">${esc(role)}</span></button>`; }
 function closePanel(){ $('#panel').classList.remove('open'); }
 
 /* ================================================================
@@ -1094,6 +1123,10 @@ function openAdd(relation, anchorId){
       <div class="field"><label>Born</label><input class="finput" id="f_born" placeholder="March 8, 1990"></div>
       <div class="field"><label>Died (blank if living)</label><input class="finput" id="f_died" placeholder="—"></div>
     </div>
+    <div class="row2">
+      <div class="field"><label>Occupation (optional)</label><input class="finput" id="f_occ" placeholder="Clockmaker"></div>
+      <div class="field"><label>Place (optional)</label><input class="finput" id="f_place" placeholder="Lewes, Sussex"></div>
+    </div>
     <div class="field"><label>Note (optional)</label><textarea class="finput" id="f_bio" placeholder="A line or two…"></textarea></div>
     <div class="field"><label>Link or contact (optional)</label><input class="finput" id="f_link" placeholder="https://…  or  name@email.com"></div>
     <input type="hidden" id="f_rel" value="${esc(relation)}"><input type="hidden" id="f_anchor" value="${htmlId(anchorId||'')}">
@@ -1115,6 +1148,7 @@ async function submitKin(){
     try{
       const d=await api('/families/'+encodeURIComponent(state.familyId)+'/persons',{method:'POST',
         body:{name, born:born==null?null:String(born), died:died==null?null:String(died), bio:$('#f_bio').value.trim(),
+          occupation:$('#f_occ').value.trim(), place:$('#f_place').value.trim(),
           links:url?[url]:[], contacts:email?[email]:[], relation:rel||'root', anchorId:anchorId||null}});
       closePanel();
       await loadFamily(state.familyId); await loadPending();
@@ -1126,6 +1160,7 @@ async function submitKin(){
   const id='x'+(++_pid)+Date.now().toString().slice(-4);
   const np={ id, familyId:state.familyId, name, born,
     died, bio:$('#f_bio').value.trim(),
+    occupation:$('#f_occ').value.trim()||null, place:$('#f_place').value.trim()||null,
     links:url?[url]:[], contacts:email?[email]:[], childOf:null, status: state.admin?'approved':'pending' };
   DB.persons[id]=np;
   // wire the relationship
@@ -1144,11 +1179,21 @@ async function submitKin(){
 /* ---- edit (admin) ---- */
 function openEdit(id){
   const p=P(id);
+  const canPhoto = REMOTE ? canEditHere() : state.admin;
+  state.photoTarget=id;
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Edit record</h2><div class="pv-dates" style="color:var(--muted)">${esc(p.name)}</div>`;
   $('#panelBody').innerHTML=`
+    ${canPhoto?`<div class="field"><label>Photo</label>
+      <div style="display:flex; align-items:center; gap:12px">
+        <div class="pv-av" style="margin:0; flex:none">${avFor(p)}</div>
+        <button class="btn-ghost" style="flex:1" onclick="document.getElementById('photoFile').click()">${photoSrc(p)?'Replace…':'Upload…'}</button>
+        ${photoSrc(p)?`<button class="btn-ghost" style="flex:1" onclick="removePhoto('${htmlId(id)}')">Remove</button>`:''}
+      </div></div>`:''}
     <div class="field"><label>Full name</label><input class="finput" id="e_name" value="${esc(p.name)}"></div>
     <div class="row2"><div class="field"><label>Born</label><input class="finput" id="e_born" value="${esc(p.born||'')}"></div>
     <div class="field"><label>Died</label><input class="finput" id="e_died" value="${esc(p.died||'')}"></div></div>
+    <div class="row2"><div class="field"><label>Occupation</label><input class="finput" id="e_occ" value="${esc(p.occupation||'')}"></div>
+    <div class="field"><label>Place</label><input class="finput" id="e_place" value="${esc(p.place||'')}"></div></div>
     <div class="field"><label>Note</label><textarea class="finput" id="e_bio">${esc(p.bio||'')}</textarea></div>`;
   $('#panelFoot').style.display='flex';
   $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="openPerson('${htmlId(id)}')">Cancel</button><button class="btn-fill" onclick="saveEdit('${htmlId(id)}')">Save changes</button>`;
@@ -1160,7 +1205,8 @@ async function saveEdit(id){
   if(REMOTE){
     try{
       const d=await api('/persons/'+encodeURIComponent(id),{method:'PATCH',
-        body:{name:$('#e_name').value.trim(), born:born==null?'':String(born), died:died==null?'':String(died), bio:$('#e_bio').value.trim()}});
+        body:{name:$('#e_name').value.trim(), born:born==null?'':String(born), died:died==null?'':String(died),
+          bio:$('#e_bio').value.trim(), occupation:$('#e_occ').value.trim(), place:$('#e_place').value.trim()}});
       await loadFamily(state.familyId);
       toast(d.applied ? 'Record updated.' : 'Edit submitted — a family admin will review it.');
       if(P(id)) openPerson(id); else closePanel();
@@ -1168,7 +1214,39 @@ async function saveEdit(id){
     }catch(e){ toast(esc(e.message)); }
     return;
   }
-  const p=P(id); p.name=$('#e_name').value.trim()||p.name; p.born=born; p.died=died; p.bio=$('#e_bio').value.trim(); saveDB(); toast(`${strong(p.name)} updated.`); openPerson(id); render();
+  const p=P(id); p.name=$('#e_name').value.trim()||p.name; p.born=born; p.died=died; p.bio=$('#e_bio').value.trim();
+  p.occupation=$('#e_occ').value.trim()||null; p.place=$('#e_place').value.trim()||null;
+  saveDB(); toast(`${strong(p.name)} updated.`); openPerson(id); render();
+}
+/* ---- person photos: resized in the browser, stored behind family access ---- */
+function resizeToDataUrl(file,max=512){
+  return new Promise((res,rej)=>{
+    const img=new Image(), url=URL.createObjectURL(file);
+    img.onload=()=>{ URL.revokeObjectURL(url);
+      const k=Math.min(1,max/Math.max(img.width,img.height));
+      const w=Math.max(1,Math.round(img.width*k)), h=Math.max(1,Math.round(img.height*k));
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      res(cv.toDataURL('image/jpeg',.85)); };
+    img.onerror=()=>{ URL.revokeObjectURL(url); rej(new Error('That file is not an image.')); };
+    img.src=url;
+  });
+}
+async function uploadPhoto(file){
+  const id=state.photoTarget; if(!id||!P(id)||!file) return;
+  try{
+    const dataUrl=await resizeToDataUrl(file);
+    if(REMOTE){ await api('/persons/'+htmlId(id)+'/photo',{method:'PUT',body:{dataUrl}}); await loadFamily(state.familyId); }
+    else { P(id).photoData=dataUrl; saveDB(); }
+    toast('Photo saved.'); openEdit(id); render();
+  }catch(e){ toast(esc(e.message)); }
+}
+async function removePhoto(id){
+  try{
+    if(REMOTE){ await api('/persons/'+htmlId(id)+'/photo',{method:'DELETE'}); await loadFamily(state.familyId); }
+    else { delete P(id).photoData; saveDB(); }
+    toast('Photo removed.'); openEdit(id); render();
+  }catch(e){ toast(esc(e.message)); }
 }
 /* ---- delete (admin) — detaches unions and re-roots the family if needed ---- */
 async function deletePerson(id){
@@ -1548,8 +1626,9 @@ function exportGEDCOM(){
   ps.forEach(p=>{
     const parts=String(p.name).trim().split(/\s+/); const sur=parts.length>1?parts.pop():'';
     L.push(`0 ${iref[p.id]} INDI`, `1 NAME ${parts.join(' ')} /${sur}/`);
-    if(p.born!=null){ L.push('1 BIRT', `2 DATE ${p.born}`); }
+    if(p.born!=null || p.place){ L.push('1 BIRT'); if(p.born!=null) L.push(`2 DATE ${p.born}`); if(p.place) L.push(`2 PLAC ${p.place}`); }
     if(p.died!=null){ L.push('1 DEAT', `2 DATE ${p.died}`); }
+    if(p.occupation) L.push(`1 OCCU ${p.occupation}`);
     if(p.bio) L.push(`1 NOTE ${String(p.bio).replace(/\r?\n/g,' ')}`);
     if(p.childOf && fref[p.childOf]) L.push(`1 FAMC ${fref[p.childOf]}`);
     unionsOf(p.id).forEach(u=>{ if(fref[u.id]) L.push(`1 FAMS ${fref[u.id]}`); });
@@ -1721,6 +1800,7 @@ $('#accountBtn').onclick=openAccount;
 $('#settingsBtn').onclick=openSettings;
 $('#relateBtn').onclick=openRelate;
 $('#importFile').onchange=e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; };
+$('#photoFile').onchange=e=>{ const f=e.target.files[0]; if(f) uploadPhoto(f); e.target.value=''; };
 $('#scrim').onclick=e=>{ if(e.target.id==='scrim') closeGate(); };
 $('#search').oninput=e=>{ state.query=e.target.value; if(state.view!=='records'){ state.view='records'; } render(); };
 $('#search').onkeydown=e=>{ if(e.key!=='Enter') return;
