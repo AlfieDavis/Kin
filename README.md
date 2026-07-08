@@ -17,9 +17,13 @@ grandparents, and whole ancestry without touching anyone else's branch.
   click one to add that ancestor. Configurable 2–5 generations.
 - **Records** — searchable card view with family statistics (living, unions,
   birth span, average lifespan).
+- **Timeline** — every dated life as a bar against a decade grid, with a
+  "today" line; like the charts, it exports as a PNG.
 - **How related?** — pick any two people and Kin traces the shortest path
   through the graph and names the relationship (siblings, spouses,
   2nd cousins once removed, great-aunt/uncle…).
+- **Deep links** — `#/family/view/person` URLs; every record has a
+  Copy Link action.
 - **Multi-family platform** — public and password-protected families, a
   directory, join requests, new-family requests, an admin console with an
   approval queue and per-family roles.
