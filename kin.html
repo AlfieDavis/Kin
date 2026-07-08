@@ -4,7 +4,7 @@
 <!-- Kin - genealogy prototype (graph model: persons + unions). Single file, in-memory. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="Kin — a family record. Browse genealogy as a graph: descendant trees, ancestor charts, and a relationship finder.">
 <meta name="color-scheme" content="dark light">
@@ -18,6 +18,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="./vendor/d3.v7.8.5.min.js"></script>
+<script src="./vendor/firebase-app-compat.js"></script>
+<script src="./vendor/firebase-auth-compat.js"></script>
 
 <style>
 :root{
@@ -180,6 +182,10 @@ select.finput{appearance:none; background-image:url("data:image/svg+xml,%3Csvg x
 .dircard .daction{margin-left:auto; padding:8px 13px; border-radius:9px; font-size:12.5px; font-weight:500; background:var(--gold); color:var(--ink)}
 .dircard .daction.locked{background:var(--ink-2); border:1px solid var(--line); color:var(--bone-dim)}
 .dircard .daction.locked:hover{border-color:var(--gold-soft); color:var(--bone)}
+.pinbtn{margin-left:auto; width:32px; height:32px; border-radius:8px; font-size:16px; color:var(--muted); display:grid; place-items:center; flex:none}
+.pinbtn:hover{color:var(--gold); background:var(--ink-2)}
+.pinbtn.on{color:var(--gold)}
+.pinbtn+.daction{margin-left:0}
 .empty{text-align:center; color:var(--muted); font-size:13px; padding:26px 0; line-height:1.6}
 .divlabel{font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:20px 0 10px}
 
@@ -247,6 +253,9 @@ html[data-anim="off"] *{animation:none!important; transition:none!important}
   <button class="iconbtn" id="adminBtn" title="Admin console" aria-label="Admin console">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l7 4v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6l7-4z"/></svg>
     <span class="seal" id="adminSeal" style="display:none">0</span>
+  </button>
+  <button class="iconbtn" id="accountBtn" title="Account" aria-label="Account">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
   </button>
   <button class="btn-primary" id="addBtn">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg> Add kin
@@ -348,6 +357,7 @@ applySettings();
 
 /* ---- persistence: the whole record survives a reload ---- */
 function saveDB(){
+  if(typeof REMOTE!=='undefined' && REMOTE) return; // remote mode: the database is the source of truth
   if(!settings.autosave) return;
   try{ localStorage.setItem(DB_KEY, JSON.stringify({v:1, seq:[_pid,_uid], families:DB.families, persons:DB.persons,
     unions:DB.unions, users:DB.users, familyRequests:DB.familyRequests, joinRequests:DB.joinRequests})); }
@@ -370,6 +380,164 @@ if(!DB.families[state.familyId]) state.familyId=Object.keys(DB.families)[0];
 const unlocked = new Set();
 try{ JSON.parse(sessionStorage.getItem('kin.unlocked')||'[]').forEach(id=>{ if(DB.families[id]) unlocked.add(id); }); }catch{}
 function rememberUnlocked(){ try{ sessionStorage.setItem('kin.unlocked',JSON.stringify([...unlocked])); }catch{} }
+
+/* ================================================================
+   REMOTE MODE — the real backend (/api/kin on Cloudflare D1).
+   When the API is reachable, records live in the shared database and
+   roles come from real accounts; otherwise this file falls back to
+   the self-contained in-browser demo above.
+   ================================================================ */
+let REMOTE=false;
+let ME={user:null, memberships:[], grants:[]};
+const FAMDATA={};                 // familyId -> {persons, unions} (loaded graphs)
+let PENDINGDATA=null, FAMREQS=[], MEMBERS=null;
+const localPins=new Set((()=>{ try{ return JSON.parse(localStorage.getItem('kin.pins')||'[]'); }catch{ return []; } })());
+
+async function api(path, opts={}){
+  const res=await fetch('/api/kin'+path,{
+    method:opts.method||'GET',
+    headers:{'content-type':'application/json','x-kin-csrf':'1'},
+    body:opts.body?JSON.stringify(opts.body):undefined,
+    credentials:'same-origin',
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||('Request failed ('+res.status+')'));
+  return data;
+}
+const myRole = fid => (DB.families[fid]||{}).myRole || null;
+const amSuper = ()=> !!(ME.user&&ME.user.isSuper);
+const isAdminHere = ()=> REMOTE ? ['owner','admin'].includes(myRole(state.familyId)) : state.admin;
+const canEditHere = ()=> REMOTE ? ['owner','admin','editor'].includes(myRole(state.familyId)) : state.admin;
+const isPinned = f => REMOTE ? !!f.pinned : localPins.has(f.id);
+
+const famFromMeta = m => ({id:m.id, name:m.name, crest:m.crest, side:m.side||'', visibility:m.visibility, passwordHash:null,
+  rootId:m.rootId, pivotId:m.pivotId, desc:m.desc||'', count:m.count, myRole:m.myRole, pinned:m.pinned, hasPassword:m.hasPassword, canView:m.canView});
+async function loadDirectory(){
+  const d=await api('/families');
+  const fresh={}; d.families.forEach(m=>{ fresh[m.id]=famFromMeta(m); });
+  DB.families=fresh;
+}
+async function loadFamily(fid){
+  const d=await api('/families/'+encodeURIComponent(fid));
+  DB.families[fid]=famFromMeta(d.family);
+  if(d.locked){ delete FAMDATA[fid]; rebuildGraph(); return false; }
+  FAMDATA[fid]={persons:d.persons, unions:d.unions};
+  rebuildGraph();
+  return true;
+}
+function rebuildGraph(){
+  DB.persons={}; DB.unions={};
+  Object.values(FAMDATA).forEach(fd=>{
+    fd.persons.forEach(p=>{ DB.persons[p.id]={...p}; });
+    fd.unions.forEach(u=>{ DB.unions[u.id]={...u}; });
+  });
+}
+async function loadMe(){ try{ ME=await api('/me'); }catch{ ME={user:null,memberships:[],grants:[]}; } $('#accountBtn').classList.toggle('on', !!ME.user); }
+async function loadPending(){
+  PENDINGDATA=null; FAMREQS=[];
+  if(REMOTE && isAdminHere()){
+    try{ PENDINGDATA=await api('/families/'+encodeURIComponent(state.familyId)+'/pending'); }catch{ PENDINGDATA=null; }
+  }
+  if(REMOTE && amSuper()){ try{ FAMREQS=(await api('/family-requests')).requests; }catch{ FAMREQS=[]; } }
+  updateAdminSeal();
+}
+async function refreshRemote(){
+  try{ await loadDirectory(); }catch{}
+  if(!DB.families[state.familyId]) state.familyId=Object.keys(DB.families)[0];
+  try{ await loadFamily(state.familyId); }catch{}
+  await loadPending();
+  render();
+}
+
+/* ---- Google sign-in (Firebase, first-party on this domain) ---- */
+let fbAuth=null;
+function initFirebase(){
+  if(!window.firebase || !/^https?:$/.test(location.protocol)) return;
+  try{
+    firebase.initializeApp({apiKey:'AIzaSyCMIH6Tz67CEd6bIh6_-cpSDky3PUee9eg',
+      authDomain: REMOTE ? location.hostname : 'epoch-d1d71.firebaseapp.com',
+      projectId:'epoch-d1d71'});
+    fbAuth=firebase.auth();
+  }catch{ fbAuth=null; }
+}
+async function googleSignIn(){
+  if(!fbAuth){ toast('Google sign-in is not available here.'); return; }
+  try{
+    const cred=await fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    const idToken=await cred.user.getIdToken();
+    await api('/auth/google',{method:'POST',body:{idToken}});
+    await afterAuth();
+  }catch(e){ const el=$('#au_err'); if(el) el.textContent=e.message||'Sign-in failed.'; }
+}
+async function afterAuth(){
+  closeGate(); await loadMe(); await refreshRemote(); renderAccount();
+  toast('Signed in as '+strong(ME.user.name||ME.user.email)+'.');
+}
+async function emailAuth(mode){
+  const err=$('#au_err'); err.textContent='';
+  const email=$('#au_email').value.trim(), password=$('#au_pass').value;
+  if(!email||!password){ err.textContent='Email and password are both needed.'; return; }
+  try{
+    if(mode==='register') await api('/auth/register',{method:'POST',body:{email,password,name:($('#au_name')?.value||'').trim()}});
+    else await api('/auth/login',{method:'POST',body:{email,password}});
+    await afterAuth();
+  }catch(e){ err.textContent=e.message; }
+}
+async function signOut(){
+  try{ await api('/auth/logout',{method:'POST'}); }catch{}
+  if(fbAuth) fbAuth.signOut().catch(()=>{});
+  ME={user:null,memberships:[],grants:[]};
+  $('#accountBtn').classList.remove('on');
+  await refreshRemote(); renderAccount(); toast('Signed out.');
+}
+
+/* ---- account panel ---- */
+function openAccount(){ $('#panel').classList.remove('wide'); $('#panel').classList.add('open'); $('#panelFoot').style.display='none'; renderAccount(); }
+let authMode='signin';
+function setAuthMode(m){ authMode=m; renderAccount(); }
+function renderAccount(){
+  if(!$('#panel').classList.contains('open')) return;
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Account</h2><div class="pv-dates" style="color:var(--muted)">${REMOTE?'Records live in the shared Kin database':'Local demo — records stay in this browser'}</div>`;
+  if(!REMOTE){
+    $('#panelBody').innerHTML=`<p class="hint">You are viewing the standalone prototype, so there is nothing to sign in to. On <a href="https://jackblaker.com/kin/" style="color:var(--verd)">jackblaker.com/kin</a> accounts, roles, and approvals are real.</p>`;
+    return;
+  }
+  if(ME.user){
+    const roles=(ME.memberships||[]).map(m=>`<div class="memrow"><div class="mav">${esc((DB.families[m.family_id]||{}).crest||'?')}</div><div><div class="mn">${esc((DB.families[m.family_id]||{}).name||m.family_id)}</div><div class="me">${esc(m.role)}</div></div></div>`).join('');
+    $('#panelBody').innerHTML=`
+      <div class="pv-av">${esc(initials(ME.user.name||ME.user.email))}</div>
+      <div class="field"><label>Signed in as</label><p>${esc(ME.user.name||'')}<br><span class="mono" style="font-size:12px;color:var(--muted)">${esc(ME.user.email)}</span></p></div>
+      ${ME.user.isSuper?'<div class="pv-tag" style="border-color:var(--gold);color:var(--gold)">Superadmin — every family, every action</div>':''}
+      ${roles?`<div class="divlabel">My families</div>${roles}`:'<p class="hint">No family roles yet — open a family and request access, or request a new line from the directory.</p>'}
+      <button class="btn-ghost" style="width:100%;margin-top:18px" onclick="signOut()">Sign out</button>`;
+    return;
+  }
+  $('#panelBody').innerHTML=`
+    <button class="btn-fill" style="width:100%;display:flex;align-items:center;justify-content:center;gap:9px" onclick="googleSignIn()">
+      <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M23 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.2a5.3 5.3 0 0 1-2.3 3.5v2.9h3.7c2.2-2 3.4-5 3.4-8.6z"/><path fill="#34A853" d="M12 24c3.1 0 5.7-1 7.6-2.8l-3.7-2.9c-1 .7-2.4 1.1-3.9 1.1-3 0-5.5-2-6.4-4.7H1.8v3A11.5 11.5 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.6 14.7a7 7 0 0 1 0-4.4v-3H1.8a11.5 11.5 0 0 0 0 10.4l3.8-3z"/><path fill="#EA4335" d="M12 4.6c1.7 0 3.2.6 4.4 1.7l3.3-3.3A11.5 11.5 0 0 0 1.8 7.3l3.8 3c.9-2.7 3.4-4.7 6.4-4.7z"/></svg>
+      Continue with Google</button>
+    <div class="divlabel" style="text-align:center">or with email</div>
+    ${authMode==='register'?`<div class="field"><label>Name</label><input class="finput" id="au_name" placeholder="Your name"></div>`:''}
+    <div class="field"><label>Email</label><input class="finput" id="au_email" type="email" placeholder="name@email.com" autocomplete="email"></div>
+    <div class="field"><label>Password${authMode==='register'?' (8+ characters)':''}</label><input class="finput" id="au_pass" type="password" autocomplete="${authMode==='register'?'new-password':'current-password'}"></div>
+    <div class="err" id="au_err" style="text-align:left;margin:0 0 10px"></div>
+    <button class="btn-fill" style="width:100%" onclick="emailAuth('${authMode==='register'?'register':'login'}')">${authMode==='register'?'Create account':'Sign in'}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="setAuthMode('${authMode==='register'?'signin':'register'}')">${authMode==='register'?'I already have an account':'Create a new account'}</button>`;
+  const pw=$('#au_pass'); if(pw) pw.onkeydown=e=>{ if(e.key==='Enter') emailAuth(authMode==='register'?'register':'login'); };
+}
+
+/* ---- pins ---- */
+async function togglePin(fid){
+  const f=DB.families[fid]; if(!f) return;
+  if(REMOTE && ME.user){
+    try{ const d=await api('/families/'+encodeURIComponent(fid)+'/pin',{method:'POST'}); f.pinned=d.pinned; }
+    catch(e){ toast(esc(e.message)); return; }
+  } else {
+    if(localPins.has(fid)) localPins.delete(fid); else localPins.add(fid);
+    try{ localStorage.setItem('kin.pins',JSON.stringify([...localPins])); }catch{}
+  }
+  buildSwitcher(); if($('#panel').classList.contains('open') && $('#dirSearch')) renderDirectory();
+}
 const ADMIN_PASSWORD_HASH = '963f38f03414352a440b315e16237c7baabf098c863153aaf1ef3500be4fbe57';
 const $ = s=>document.querySelector(s);
 const fam = ()=>DB.families[state.familyId];
@@ -389,8 +557,10 @@ const childrenOf = pid=>{ const kids=[]; unionsOf(pid).forEach(u=>{ Object.value
 const parentsOf = pid=>{ const p=P(pid); if(!p||!p.childOf) return []; const u=U(p.childOf); return [P(u.a),P(u.b)].filter(Boolean); };
 const primaryPartner = pid=>{ const u=unionsOf(pid).find(u=>u.status==='approved'); return u?P(partnerIn(pid,u)):null; };
 const pendingKin = fid=>membersOf(fid).filter(p=>p.status==='pending');
-const totalAdminCount = ()=> pendingKin(state.familyId).length + DB.familyRequests.filter(r=>r.status==='pending').length + DB.joinRequests.filter(r=>r.status==='pending'&&r.family===state.familyId).length;
-const hasAccess = fid=>state.admin || unlocked.has(fid) || DB.families[fid]?.visibility!=='private';
+const totalAdminCount = ()=> REMOTE
+  ? (PENDINGDATA ? PENDINGDATA.pendingKin.length + PENDINGDATA.changes.length + PENDINGDATA.joins.length : 0) + FAMREQS.length
+  : pendingKin(state.familyId).length + DB.familyRequests.filter(r=>r.status==='pending').length + DB.joinRequests.filter(r=>r.status==='pending'&&r.family===state.familyId).length;
+const hasAccess = fid=> REMOTE ? !!DB.families[fid]?.canView : (state.admin || unlocked.has(fid) || DB.families[fid]?.visibility!=='private');
 const esc = value=>String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const strong = value=>`<b>${esc(value)}</b>`;
 const htmlId = value=>String(value ?? '').replace(/[^a-zA-Z0-9_-]/g,'');
@@ -636,18 +806,27 @@ function renderLocked(f){
   updateAdminSeal();
 }
 function buildSwitcher(){
-  $('#switcher').innerHTML=Object.values(DB.families).map(f=>{
+  /* pinned families + the current one — the directory holds the rest, searchable */
+  const all=Object.values(DB.families);
+  let show=all.filter(f=>isPinned(f)||f.id===state.familyId||(REMOTE&&f.myRole));
+  if(!show.length) show=all.slice(0,2);
+  show=[...new Set(show)].slice(0,6);
+  const more=all.length-show.length;
+  $('#switcher').innerHTML=show.map(f=>{
     const locked=!hasAccess(f.id);
     return `<button class="fam-btn ${f.id===state.familyId?'active':''}" data-fam="${htmlId(f.id)}"><span class="crest">${esc(f.crest)}</span>${esc(f.name)}${f.visibility==='private'?`<span class="lock">${locked?'locked':'open'}</span>`:''}</button>`;
-  }).join('');
-  $('#switcher').querySelectorAll('.fam-btn').forEach(b=>b.onclick=()=>switchFamily(b.dataset.fam));
+  }).join('') + (more>0?`<button class="fam-btn" data-fam="__more">+${more} more…</button>`:'');
+  $('#switcher').querySelectorAll('.fam-btn').forEach(b=>b.onclick=()=>{ if(b.dataset.fam==='__more') openDirectory(); else switchFamily(b.dataset.fam); });
 }
-function switchFamily(id){
+async function switchFamily(id){
   if(id===state.familyId) return;
   const f=DB.families[id];
   if(!f) return;
   if(!hasAccess(id)){ openGate(id); return; }
-  state.familyId=id; state.descRoot=null; state.ancFocus=null; state.query=''; $('#search').value=''; closePanel(); render();
+  state.familyId=id; state.descRoot=null; state.ancFocus=null; state.query=''; $('#search').value=''; closePanel();
+  if(REMOTE && !FAMDATA[id]){ try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
+  if(REMOTE){ PENDINGDATA=null; MEMBERS=null; loadPending(); }
+  render();
 }
 function syncView(){ $('#viewToggle').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view)); }
 
@@ -657,7 +836,8 @@ function syncView(){ $('#viewToggle').querySelectorAll('button').forEach(b=>b.cl
 function openPerson(id,opts={}){
   const p=P(id); if(!p) return;
   const partner=primaryPartner(id), parents=parentsOf(id), kids=childrenOf(id).filter(k=>k.status==='approved');
-  const canEdit = state.admin;
+  const canEdit = REMOTE ? canEditHere() : state.admin;
+  const canDelete = isAdminHere();
   $('#panel').classList.remove('wide');
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button>
     <div class="pv-av">${esc(initials(p.name))}</div>
@@ -671,7 +851,9 @@ function openPerson(id,opts={}){
     <button class="act full" onclick="openAdd('parent','${htmlId(id)}')">${plus()} Add ${parents.length?'other parent':'parents'}</button>
     <button class="act" onclick="state.ancFocus='${htmlId(id)}';state.view='anc';render()">Ancestry ↑</button>
     <button class="act" onclick="state.descRoot='${htmlId(id)}';state.view='desc';render()">Descendants ↓</button>
-    ${canEdit?`<button class="act" onclick="openEdit('${htmlId(id)}')">Edit record</button><button class="act danger" onclick="deletePerson('${htmlId(id)}')">Delete record</button>`:''}
+    ${canEdit&&canDelete?`<button class="act" onclick="openEdit('${htmlId(id)}')">Edit record</button><button class="act danger" onclick="deletePerson('${htmlId(id)}')">Delete record</button>`
+      :canEdit?`<button class="act full" onclick="openEdit('${htmlId(id)}')">Edit record</button>`
+      :(REMOTE&&ME.user)?`<button class="act full" onclick="openEdit('${htmlId(id)}')">Suggest an edit</button>`:''}
   </div>`;
   if(p.bio) body+=`<div class="field"><label>Note</label><p>${esc(p.bio)}</p></div>`;
   (p.links||[]).forEach(l=>{ const url=safeUrl(l); if(url) body+=`<div class="field"><label>Link</label><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(l)}</a></div>`; });
@@ -713,12 +895,12 @@ function openAdd(relation, anchorId){
     <div class="field"><label>Note (optional)</label><textarea class="finput" id="f_bio" placeholder="A line or two…"></textarea></div>
     <div class="field"><label>Link or contact (optional)</label><input class="finput" id="f_link" placeholder="https://…  or  name@email.com"></div>
     <input type="hidden" id="f_rel" value="${esc(relation)}"><input type="hidden" id="f_anchor" value="${htmlId(anchorId||'')}">
-    <p class="hint">Submissions join the approval queue. ${state.admin?'As admin, yours are approved instantly.':'An admin reviews before it appears.'}</p>`;
+    <p class="hint">${REMOTE&&!ME.user?'Sign in to submit — records belong to real accounts here.':canEditHere()?'Your additions appear in the tree straight away.':'Submissions join the approval queue — a family admin reviews before it appears.'}</p>`;
   $('#panelFoot').style.display='flex';
-  $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="closePanel()">Cancel</button><button class="btn-fill" onclick="submitKin()">${state.admin?'Add to tree':'Submit for approval'}</button>`;
+  $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="closePanel()">Cancel</button><button class="btn-fill" onclick="submitKin()">${canEditHere()?'Add to tree':'Submit for approval'}</button>`;
   $('#panel').classList.add('open'); setTimeout(()=>$('#f_name')?.focus(),320);
 }
-function submitKin(){
+async function submitKin(){
   const name=$('#f_name').value.trim(); if(!name){ toast('A name is needed.'); return; }
   const rel=$('#f_rel').value, anchorId=$('#f_anchor').value, raw=$('#f_link').value.trim();
   const email=raw?safeEmail(raw):null, url=raw?safeUrl(raw):null;
@@ -726,6 +908,19 @@ function submitKin(){
   const born=parseDateValue($('#f_born').value), died=parseDateValue($('#f_died').value);
   if($('#f_born').value.trim() && born==null){ toast('Born must be a year or date.'); return; }
   if($('#f_died').value.trim() && died==null){ toast('Died must be a year or date.'); return; }
+  if(REMOTE){
+    if(!ME.user){ toast('Sign in to add kin.'); openAccount(); return; }
+    try{
+      const d=await api('/families/'+encodeURIComponent(state.familyId)+'/persons',{method:'POST',
+        body:{name, born:born==null?null:String(born), died:died==null?null:String(died), bio:$('#f_bio').value.trim(),
+          links:url?[url]:[], contacts:email?[email]:[], relation:rel||'root', anchorId:anchorId||null}});
+      closePanel();
+      await loadFamily(state.familyId); await loadPending();
+      toast(d.status==='approved' ? `${strong(name)} added.` : `${strong(name)} submitted — a family admin will review it.`);
+      render();
+    }catch(e){ toast(esc(e.message)); }
+    return;
+  }
   const id='x'+(++_pid)+Date.now().toString().slice(-4);
   const np={ id, familyId:state.familyId, name, born,
     died, bio:$('#f_bio').value.trim(),
@@ -756,16 +951,35 @@ function openEdit(id){
   $('#panelFoot').style.display='flex';
   $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="openPerson('${htmlId(id)}')">Cancel</button><button class="btn-fill" onclick="saveEdit('${htmlId(id)}')">Save changes</button>`;
 }
-function saveEdit(id){
+async function saveEdit(id){
   const born=parseDateValue($('#e_born').value), died=parseDateValue($('#e_died').value);
   if($('#e_born').value.trim() && born==null){ toast('Born must be a year or date.'); return; }
   if($('#e_died').value.trim() && died==null){ toast('Died must be a year or date.'); return; }
+  if(REMOTE){
+    try{
+      const d=await api('/persons/'+encodeURIComponent(id),{method:'PATCH',
+        body:{name:$('#e_name').value.trim(), born:born==null?'':String(born), died:died==null?'':String(died), bio:$('#e_bio').value.trim()}});
+      await loadFamily(state.familyId);
+      toast(d.applied ? 'Record updated.' : 'Edit submitted — a family admin will review it.');
+      if(P(id)) openPerson(id); else closePanel();
+      render();
+    }catch(e){ toast(esc(e.message)); }
+    return;
+  }
   const p=P(id); p.name=$('#e_name').value.trim()||p.name; p.born=born; p.died=died; p.bio=$('#e_bio').value.trim(); saveDB(); toast(`${strong(p.name)} updated.`); openPerson(id); render();
 }
 /* ---- delete (admin) — detaches unions and re-roots the family if needed ---- */
-function deletePerson(id){
-  const p=P(id); if(!p || !state.admin) return;
+async function deletePerson(id){
+  const p=P(id); if(!p || !isAdminHere()) return;
   if(settings.confirmDanger && !confirm(`Remove ${p.name} from the record? Their unions are detached; children remain.`)) return;
+  if(REMOTE){
+    try{
+      await api('/persons/'+encodeURIComponent(id),{method:'DELETE'});
+      await loadFamily(state.familyId);
+      closePanel(); render(); toast(`${strong(p.name)} removed from the record.`);
+    }catch(e){ toast(esc(e.message)); }
+    return;
+  }
   unionsOf(id).forEach(u=>{
     if(u.a===id) u.a=null; if(u.b===id) u.b=null;
     if(!u.a && !u.b){ Object.values(DB.persons).forEach(c=>{ if(c.childOf===u.id) c.childOf=null; }); delete DB.unions[u.id]; }
@@ -798,9 +1012,14 @@ function renderDirectory(){
     $('#panelBody').innerHTML=tabs+`
       <div class="search" style="width:100%; margin-bottom:14px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="dirSearch" placeholder="Search families…" oninput="renderDirectory()" value="${esc(q)}"></div>
       ${list.map(f=>{ const locked=!hasAccess(f.id);
+        const count=REMOTE?(f.count??0):approvedOf(f.id).length;
+        const action = !locked ? `<button class="daction" onclick="openFamily('${htmlId(f.id)}')">Open</button>`
+          : (REMOTE&&f.hasPassword) ? `<button class="daction locked" onclick="openGate('${htmlId(f.id)}')">Unlock</button>`
+          : `<button class="daction locked" onclick="requestJoin('${htmlId(f.id)}')">Request access</button>`;
         return `<div class="dircard"><div class="dcrest">${esc(f.crest)}</div>
-          <div><h4>${esc(f.name)}</h4><div class="dsub">${approvedOf(f.id).length} kin · ${f.visibility==='private'?'private':'public'} · ${esc(f.side)}</div></div>
-          <button class="daction ${locked?'locked':''}" onclick="${locked?`requestJoin('${htmlId(f.id)}')`:`openFamily('${htmlId(f.id)}')`}">${locked?'Request access':'Open'}</button></div>`;
+          <div><h4>${esc(f.name)}</h4><div class="dsub">${count} kin · ${f.visibility==='private'?'private':'public'} · ${esc(f.side)}${f.myRole?' · you: '+esc(f.myRole):''}</div></div>
+          <button class="pinbtn ${isPinned(f)?'on':''}" title="${isPinned(f)?'Unpin from top bar':'Pin to top bar'}" onclick="togglePin('${htmlId(f.id)}')">${isPinned(f)?'★':'☆'}</button>
+          ${action}</div>`;
       }).join('')}`;
     setTimeout(()=>{ const s=$('#dirSearch'); if(s){ s.focus(); s.setSelectionRange(s.value.length,s.value.length);} },0);
   } else {
@@ -813,15 +1032,44 @@ function renderDirectory(){
       <button class="btn-fill" style="width:100%" onclick="requestFamily()">Request this family</button>`;
   }
 }
-function openFamily(id){ const f=DB.families[id]; if(!f) return; if(!hasAccess(id)){ openGate(id); return; } unlocked.add(id); rememberUnlocked(); state.familyId=id; state.descRoot=null; state.ancFocus=null; closePanel(); render(); toast(`${strong(f.name)} opened.`); }
-function requestJoin(fid){ const f=DB.families[fid]; if(!f) return; DB.joinRequests.push({id:'jr'+Date.now(), family:fid, by:'you@kin.app', note:'Requested from the directory.', status:'pending'}); saveDB(); toast(`Access request sent to ${strong(f.name)} admins.`); updateAdminSeal(); }
-function requestFamily(){ const name=$('#nf_name').value.trim(); if(!name){ $('#nf_name').focus(); return; } DB.familyRequests.push({id:'fr'+Date.now(), name, by:'you@kin.app', note:$('#nf_note').value.trim(), vis:$('#nf_vis').value, side:$('#nf_side').value.trim(), status:'pending'}); saveDB(); toast(`${strong(name)} requested — an admin will review it.`); updateAdminSeal(); closePanel(); }
+async function openFamily(id){ const f=DB.families[id]; if(!f) return; if(!hasAccess(id)){ openGate(id); return; }
+  if(!REMOTE){ unlocked.add(id); rememberUnlocked(); }
+  state.familyId=id; state.descRoot=null; state.ancFocus=null; closePanel();
+  if(REMOTE && !FAMDATA[id]){ try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
+  if(REMOTE){ PENDINGDATA=null; MEMBERS=null; loadPending(); }
+  render(); toast(`${strong(f.name)} opened.`); }
+async function requestJoin(fid){
+  const f=DB.families[fid]; if(!f) return;
+  if(REMOTE){
+    if(!ME.user){ toast('Sign in to request access.'); openAccount(); return; }
+    try{ const d=await api('/families/'+encodeURIComponent(fid)+'/join-requests',{method:'POST',body:{note:'Requested from the directory.'}});
+      toast(d.already?'Your request is already waiting.':`Access request sent to ${strong(f.name)} admins.`); }
+    catch(e){ toast(esc(e.message)); }
+    return;
+  }
+  DB.joinRequests.push({id:'jr'+Date.now(), family:fid, by:'you@kin.app', note:'Requested from the directory.', status:'pending'}); saveDB(); toast(`Access request sent to ${strong(f.name)} admins.`); updateAdminSeal(); }
+async function requestFamily(){
+  const name=$('#nf_name').value.trim(); if(!name){ $('#nf_name').focus(); return; }
+  if(REMOTE){
+    if(!ME.user){ toast('Sign in to request a family.'); openAccount(); return; }
+    try{ await api('/family-requests',{method:'POST',body:{name, side:$('#nf_side').value.trim(), visibility:$('#nf_vis').value, note:$('#nf_note').value.trim()}});
+      closePanel(); toast(`${strong(name)} requested — the Kin admin will review it.`); }
+    catch(e){ toast(esc(e.message)); }
+    return;
+  }
+  DB.familyRequests.push({id:'fr'+Date.now(), name, by:'you@kin.app', note:$('#nf_note').value.trim(), vis:$('#nf_vis').value, side:$('#nf_side').value.trim(), status:'pending'}); saveDB(); toast(`${strong(name)} requested — an admin will review it.`); updateAdminSeal(); closePanel(); }
 
 /* ================================================================
    ADMIN CONSOLE  (pending kin · family requests · join requests · members & roles)
    ================================================================ */
-function updateAdminSeal(){ const n=totalAdminCount(); const s=$('#adminSeal'); s.style.display=(state.admin&&n)?'grid':'none'; s.textContent=n; }
+function updateAdminSeal(){ const n=totalAdminCount(); const s=$('#adminSeal'); s.style.display=(isAdminHere()&&n)?'grid':'none'; s.textContent=n; $('#adminBtn').classList.toggle('on', isAdminHere()); }
 function toggleAdmin(){
+  if(REMOTE){
+    if(!ME.user){ openAccount(); return; }
+    if(isAdminHere()||amSuper()) openAdmin();
+    else toast('You are not an admin of this family.');
+    return;
+  }
   if(!state.admin){ openAdminGate(); return; }
   state.admin=false;
   $('#adminBtn').classList.remove('on');
@@ -859,7 +1107,88 @@ async function tryAdmin(){
   }
 }
 function openAdmin(){ $('#panel').classList.add('wide','open'); $('#panelFoot').style.display='none'; renderAdmin(); }
+
+/* ---- remote admin console: per-family moderation + settings; superadmin sees new-line requests ---- */
+async function renderAdminRemote(){
+  const f=fam();
+  if(!PENDINGDATA){ try{ PENDINGDATA=await api('/families/'+encodeURIComponent(f.id)+'/pending'); }catch{ PENDINGDATA={pendingKin:[],changes:[],joins:[]}; } }
+  if(MEMBERS===null && state.adminTab==='members'){ try{ MEMBERS=await api('/families/'+encodeURIComponent(f.id)+'/members'); }catch{ MEMBERS={members:[],invites:[]}; } }
+  const pk=PENDINGDATA.pendingKin, cs=PENDINGDATA.changes, jr=PENDINGDATA.joins;
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Admin console</h2><div class="pv-dates" style="color:var(--muted)">${esc(f.name)} · you are ${esc(amSuper()?'superadmin':myRole(f.id)||'')}</div>`;
+  const tab=(id,label,n)=>`<button class="${state.adminTab===id?'active':''}" onclick="state.adminTab='${id}';renderAdmin()">${label}${n?`<span class="tseal">${n}</span>`:''}</button>`;
+  const tabs=`<div class="tabs">${tab('pending','Kin',pk.length)}${tab('edits','Edits',cs.length)}${tab('join','Access',jr.length)}${tab('members','Roles',0)}${tab('family','Family',0)}${amSuper()?tab('families','Lines',FAMREQS.length):''}</div>`;
+  let body='';
+  if(state.adminTab==='pending'){
+    body = pk.length ? pk.map(p=>`<div class="card"><h4>${esc(p.name)}</h4><div class="sub">${esc(dates(p))}</div>
+      <p>${esc(p.bio||'No note.')}</p><div class="row"><button class="approve" onclick="approveKin('${htmlId(p.id)}')">Approve</button><button class="decline" onclick="declineKin('${htmlId(p.id)}')">Decline</button></div></div>`).join('')
+      : '<div class="empty">No kin awaiting approval.</div>';
+  } else if(state.adminTab==='edits'){
+    body = cs.length ? cs.map(c=>`<div class="card"><h4>${esc(c.personName)}</h4><div class="sub">edit proposed by ${esc(c.by||'someone')}</div>
+      <p>${Object.entries(c.patch).map(([k,v])=>`<b style="color:var(--gold)">${esc(k)}</b> → ${esc(v==null?'—':String(v))}`).join('<br>')}</p>
+      <div class="row"><button class="approve" onclick="actChange('${htmlId(c.id)}','approve')">Apply</button><button class="decline" onclick="actChange('${htmlId(c.id)}','reject')">Reject</button></div></div>`).join('')
+      : '<div class="empty">No proposed edits.</div>';
+  } else if(state.adminTab==='join'){
+    body = jr.length ? jr.map(r=>`<div class="card"><h4>${esc(r.by||'')}</h4><div class="sub">${esc(r.email||'')}</div>
+      <p>${esc(r.note||'Requests access to this record.')}</p>
+      <div class="row"><button class="approve" onclick="actJoin('${htmlId(r.id)}','grant')">Grant viewer access</button><button class="decline" onclick="actJoin('${htmlId(r.id)}','deny')">Deny</button></div></div>`).join('')
+      : '<div class="empty">No access requests.</div>';
+  } else if(state.adminTab==='members'){
+    const M=MEMBERS||{members:[],invites:[]};
+    body=`<p class="hint">Roles for the ${esc(f.name)} record. Owners manage everything; admins approve and invite; editors add and edit directly; viewers read and propose.</p>`+
+      (M.members.map(m=>`<div class="memrow"><div class="mav">${esc(initials(m.name||m.email))}</div><div><div class="mn">${esc(m.name||m.email)}</div><div class="me">${esc(m.email)}</div></div>
+        <div class="roleseg" style="margin-left:auto">${['owner','admin','editor','viewer'].map(r=>`<button class="${m.role===r?'on':''}" onclick="setRoleRemote('${htmlId(m.id)}','${r}')">${r}</button>`).join('')}</div></div>`).join('')||'<div class="empty">No members yet.</div>')+
+      (M.invites.length?`<div class="divlabel">Waiting to sign up</div>`+M.invites.map(i=>`<div class="memrow"><div class="mav">✉</div><div><div class="mn">${esc(i.email)}</div><div class="me">invited as ${esc(i.role)}</div></div></div>`).join(''):'')+
+      `<div class="divlabel">Invite by email</div>
+      <div class="field"><input class="finput" id="inv_email" placeholder="name@email.com"></div>
+      <div class="field"><label>Role</label><select class="finput" id="inv_role"><option value="viewer">Viewer — read & propose</option><option value="editor">Editor — add & edit directly</option><option value="admin">Admin — approve & invite</option></select></div>
+      <button class="btn-fill" style="width:100%" onclick="inviteRemote()">Send invite</button>
+      <p class="hint" style="margin-top:10px">They get the role the moment they sign in with that email (Google or password).</p>`;
+  } else if(state.adminTab==='family'){
+    const isOwner = amSuper() || myRole(f.id)==='owner';
+    body = isOwner ? `
+      <p class="hint">The look and reach of this record. Only owners${amSuper()?' (and you, superadmin)':''} can change these.</p>
+      <div class="row2"><div class="field"><label>Family name</label><input class="finput" id="fs_name" value="${esc(f.name)}"></div>
+      <div class="field"><label>Crest letter</label><input class="finput" id="fs_crest" maxlength="2" value="${esc(f.crest)}"></div></div>
+      <div class="field"><label>This line is…</label><input class="finput" id="fs_side" value="${esc(f.side||'')}"></div>
+      <div class="field"><label>Description</label><textarea class="finput" id="fs_desc">${esc(f.desc||'')}</textarea></div>
+      <div class="field"><label>Visibility</label><select class="finput" id="fs_vis"><option value="public" ${f.visibility==='public'?'selected':''}>Public — anyone can browse</option><option value="private" ${f.visibility==='private'?'selected':''}>Private — members & password only</option></select></div>
+      <div class="field"><label>Family password (blank = keep, "-" = remove)</label><input class="finput" id="fs_pass" type="password" placeholder="${f.hasPassword?'••••••  (set)':'not set'}" autocomplete="new-password"></div>
+      <div class="row2">
+        <div class="field"><label>Tree root</label><select class="finput" id="fs_root">${approvedOf(f.id).map(p=>`<option value="${htmlId(p.id)}" ${p.id===f.rootId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Ancestor focus</label><select class="finput" id="fs_pivot">${approvedOf(f.id).map(p=>`<option value="${htmlId(p.id)}" ${p.id===f.pivotId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+      </div>
+      <button class="btn-fill" style="width:100%" onclick="saveFamilySettings()">Save family settings</button>`
+      : '<div class="empty">Only the family owner can change these settings.</div>';
+  } else if(state.adminTab==='families'){
+    body = FAMREQS.length ? FAMREQS.map(r=>`<div class="card"><h4>${esc(r.name)}</h4><div class="sub">requested by ${esc(r.by||'')} · ${esc(r.visibility)}${r.side?' · '+esc(r.side):''}</div>
+      <p>${esc(r.note||'No note.')}</p><div class="row"><button class="approve" onclick="actFamilyReq('${htmlId(r.id)}','approve')">Create family</button><button class="decline" onclick="actFamilyReq('${htmlId(r.id)}','reject')">Decline</button></div></div>`).join('')
+      : '<div class="empty">No new-line requests.</div>';
+  }
+  $('#panelBody').innerHTML=tabs+body;
+}
+async function actChange(id,verb){ try{ await api('/change-requests/'+htmlId(id)+'/'+verb,{method:'POST'}); PENDINGDATA=null; await loadFamily(state.familyId); await loadPending(); renderAdmin(); render(); toast(verb==='approve'?'Edit applied.':'Edit rejected.'); }catch(e){ toast(esc(e.message)); } }
+async function actJoin(id,verb){ try{ await api('/join-requests/'+htmlId(id)+'/'+verb,{method:'POST'}); PENDINGDATA=null; await loadPending(); renderAdmin(); toast(verb==='grant'?'Access granted.':'Request denied.'); }catch(e){ toast(esc(e.message)); } }
+async function actFamilyReq(id,verb){ try{ await api('/family-requests/'+htmlId(id)+'/'+verb,{method:'POST'}); await loadDirectory(); await loadPending(); renderAdmin(); render(); toast(verb==='approve'?'Family created.':'Request declined.'); }catch(e){ toast(esc(e.message)); } }
+async function setRoleRemote(uid,role){ try{ await api('/families/'+encodeURIComponent(state.familyId)+'/members/'+htmlId(uid),{method:'PUT',body:{role}}); MEMBERS=null; renderAdmin(); toast('Role updated.'); }catch(e){ toast(esc(e.message)); } }
+async function inviteRemote(){
+  const email=safeEmail($('#inv_email').value); if(!email){ toast('Enter a valid email address.'); return; }
+  const role=$('#inv_role').value;
+  try{ const d=await api('/families/'+encodeURIComponent(state.familyId)+'/invites',{method:'POST',body:{email,role}});
+    MEMBERS=null; renderAdmin(); toast(d.added?`${strong(email)} added as ${esc(role)}.`:`Invite waiting for ${strong(email)}.`); }
+  catch(e){ toast(esc(e.message)); }
+}
+async function saveFamilySettings(){
+  const pass=$('#fs_pass').value;
+  const body={ name:$('#fs_name').value.trim(), crest:$('#fs_crest').value.trim(), side:$('#fs_side').value.trim(),
+    desc:$('#fs_desc').value.trim(), visibility:$('#fs_vis').value, rootId:$('#fs_root').value, pivotId:$('#fs_pivot').value };
+  if(pass==='-') body.password=''; else if(pass) body.password=pass;
+  try{ await api('/families/'+encodeURIComponent(state.familyId),{method:'PATCH',body});
+    await loadDirectory(); await loadFamily(state.familyId); renderAdmin(); render(); toast('Family settings saved.'); }
+  catch(e){ toast(esc(e.message)); }
+}
+
 function renderAdmin(){
+  if(REMOTE){ renderAdminRemote(); return; }
   const pk=pendingKin(state.familyId), fr=DB.familyRequests.filter(r=>r.status==='pending'), jr=DB.joinRequests.filter(r=>r.status==='pending');
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Admin console</h2><div class="pv-dates" style="color:var(--muted)">${esc(fam().name)} · you are owner</div>`;
   const tab=(id,label,n)=>`<button class="${state.adminTab===id?'active':''}" onclick="state.adminTab='${id}';renderAdmin()">${label}${n?`<span class="tseal">${n}</span>`:''}</button>`;
@@ -887,8 +1216,23 @@ function renderAdmin(){
   }
   $('#panelBody').innerHTML=tabs+body;
 }
-function approveKin(id){ P(id).status='approved'; saveDB(); toast(`${strong(P(id).name)} approved.`); renderAdmin(); render(); }
-function declineKin(id){
+async function approveKin(id){
+  if(REMOTE){
+    try{ await api('/persons/'+encodeURIComponent(id)+'/approve',{method:'POST'});
+      await loadFamily(state.familyId); await loadPending(); toast('Approved.'); renderAdmin(); render(); }
+    catch(e){ toast(esc(e.message)); }
+    return;
+  }
+  P(id).status='approved'; saveDB(); toast(`${strong(P(id).name)} approved.`); renderAdmin(); render();
+}
+async function declineKin(id){
+  if(REMOTE){
+    if(settings.confirmDanger && !confirm('Decline and remove this submission?')) return;
+    try{ await api('/persons/'+encodeURIComponent(id)+'/reject',{method:'POST'});
+      await loadFamily(state.familyId); await loadPending(); toast('Declined.'); renderAdmin(); render(); }
+    catch(e){ toast(esc(e.message)); }
+    return;
+  }
   const p=P(id); if(!p) return;
   if(settings.confirmDanger && !confirm(`Decline and remove ${p.name}?`)) return;
   unionsOf(id).forEach(u=>{ if(u.a===id) u.a=null; if(u.b===id) u.b=null;
@@ -960,6 +1304,7 @@ function exportJSON(){
   toast('Backup downloaded.');
 }
 function importJSON(file){
+  if(REMOTE){ toast('Import works in the local demo only — the live record is shared. Use Export for backups.'); return; }
   const r=new FileReader();
   r.onload=()=>{ try{
       const d=JSON.parse(r.result);
@@ -974,6 +1319,7 @@ function importJSON(file){
   r.readAsText(file);
 }
 function resetData(){
+  if(REMOTE){ toast('The live record lives in the shared database — nothing to reset here.'); return; }
   if(settings.confirmDanger && !confirm('Discard saved changes and restore the built-in record?')) return;
   try{ localStorage.removeItem(DB_KEY); }catch{}
   location.reload();
@@ -1090,16 +1436,27 @@ function traceRelation(){
    GATE
    ================================================================ */
 function openGate(id){ const f=DB.families[id];
+  const canPassword = REMOTE ? f.hasPassword : true;
   $('#modal').innerHTML=`<div class="clasp"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
-    <h2><span class="crest-lg">${esc(f.crest)}</span> ${esc(f.name)} is private</h2><p class="sub">${esc(f.side)}. Enter the family password, or request access from the directory.</p>
-    <input class="finput" id="gatePass" type="password" placeholder="Password" autocomplete="off"><div class="err" id="gateErr"></div>
-    <div style="display:flex; gap:10px; margin-top:6px"><button class="btn-ghost" onclick="closeGate()">Cancel</button><button class="btn-fill" onclick="tryGate('${htmlId(id)}')">Open record</button></div>
-    <button class="btn-ghost" style="width:100%; margin-top:10px" onclick="openAdminGate()">Admin login</button>`;
-  $('#scrim').classList.add('show'); setTimeout(()=>$('#gatePass').focus(),100);
-  $('#gatePass').onkeydown=e=>{ if(e.key==='Enter') tryGate(id); };
+    <h2><span class="crest-lg">${esc(f.crest)}</span> ${esc(f.name)} is private</h2>
+    <p class="sub">${esc(f.side)}. ${canPassword?'Enter the family password, or':'Members only —'} ${REMOTE?'sign in or request access from the directory.':'request access from the directory.'}</p>
+    ${canPassword?`<input class="finput" id="gatePass" type="password" placeholder="Password" autocomplete="off"><div class="err" id="gateErr"></div>
+    <div style="display:flex; gap:10px; margin-top:6px"><button class="btn-ghost" onclick="closeGate()">Cancel</button><button class="btn-fill" onclick="tryGate('${htmlId(id)}')">Open record</button></div>`
+    :`<div style="display:flex; gap:10px; margin-top:6px"><button class="btn-ghost" onclick="closeGate()">Cancel</button><button class="btn-fill" onclick="closeGate();requestJoin('${htmlId(id)}')">Request access</button></div>`}
+    <button class="btn-ghost" style="width:100%; margin-top:10px" onclick="${REMOTE?'closeGate();openAccount()':'openAdminGate()'}">${REMOTE?(ME.user?'Switch account':'Sign in'):'Admin login'}</button>`;
+  $('#scrim').classList.add('show'); setTimeout(()=>$('#gatePass')?.focus(),100);
+  const gp=$('#gatePass'); if(gp) gp.onkeydown=e=>{ if(e.key==='Enter') tryGate(id); };
 }
 async function tryGate(id){
   const f=DB.families[id], input=$('#gatePass'), err=$('#gateErr');
+  if(REMOTE){
+    try{
+      await api('/families/'+encodeURIComponent(id)+'/unlock',{method:'POST',body:{password:input.value}});
+      closeGate(); await loadDirectory(); state.familyId=id; state.descRoot=null; state.ancFocus=null;
+      await loadFamily(id); closePanel(); render(); toast(`${strong(f.name)} opened.`);
+    }catch(e){ err.textContent=e.message; input.value=''; }
+    return;
+  }
   if(!f?.passwordHash){ err.textContent='Access for this family has not been configured.'; return; }
   const digest = await passwordDigest(id,input.value);
   if(digest && digest===f.passwordHash){ unlocked.add(id); rememberUnlocked(); closeGate(); state.familyId=id; state.descRoot=null; state.ancFocus=null; closePanel(); render(); toast(`${strong(DB.families[id].name)} opened.`); }
@@ -1111,6 +1468,7 @@ function closeGate(){ $('#scrim').classList.remove('show'); }
 $('#addBtn').onclick=()=>openAdd('root',null);
 $('#browseBtn').onclick=openDirectory;
 $('#adminBtn').onclick=toggleAdmin;
+$('#accountBtn').onclick=openAccount;
 $('#settingsBtn').onclick=openSettings;
 $('#relateBtn').onclick=openRelate;
 $('#importFile').onchange=e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; };
@@ -1125,7 +1483,26 @@ document.onkeydown=e=>{
   else if(e.key==='/' && !typing){ e.preventDefault(); $('#search').focus(); }
 };
 window.onresize=()=>{ if(state.view!=='records') fitView(); };
-render();
+
+/* boot: prefer the real backend; fall back to the in-browser demo */
+(async function boot(){
+  try{
+    const h=await fetch('/api/kin/health',{headers:{accept:'application/json'}});
+    REMOTE = h.ok && (await h.json()).ok===true;
+  }catch{ REMOTE=false; }
+  if(REMOTE){
+    initFirebase();
+    await loadMe();
+    try{ await loadDirectory(); }catch{ REMOTE=false; }
+  }
+  if(REMOTE){
+    if(!DB.families[state.familyId]) state.familyId=Object.keys(DB.families)[0];
+    if(!hasAccess(state.familyId)){ const open=Object.values(DB.families).find(f=>f.canView); if(open) state.familyId=open.id; }
+    try{ await loadFamily(state.familyId); }catch{}
+    await loadPending();
+  }
+  render();
+})();
 </script>
 </body>
 </html>

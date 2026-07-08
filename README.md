@@ -37,12 +37,26 @@ password gates use `crypto.subtle`, which needs HTTPS or localhost).
 
 ## Architecture
 
-The prototype keeps everything in memory + localStorage, but the data shapes
-are deliberately 1:1 with a real backend schema — persons, unions, families,
-memberships, change requests. [`kin-architecture.md`](kin-architecture.md) is
-the full build spec for the production version (Postgres recursive CTEs for the
-graph walks, Fastify API, per-family roles). [`kin-tokens.css`](kin-tokens.css)
-is the design-token sheet.
+**The live site runs on a real backend now** — a REST API on the jackblaker.com
+Cloudflare Worker with a D1 (SQLite) database, built from
+[`kin-architecture.md`](kin-architecture.md):
+
+- **Accounts**: email/password (PBKDF2, httpOnly session cookies) or
+  **Sign in with Google** (Firebase ID tokens verified server-side).
+- **Roles per family**: owner / admin / editor / viewer. Admins approve
+  pending kin, proposed edits, and access requests — but only for the family
+  they manage. One superadmin can do everything everywhere.
+- **Moderation**: viewers' additions and edits queue as pending /
+  change requests; email invites grant a role at first sign-in; every
+  moderation action lands in an audit log.
+- **Directory**: families are searchable and pinnable, so the switcher shows
+  only what you care about.
+
+The backend source lives in the site repo (`worker/kin/` — `api.js`,
+`schema.sql`, `seed.sql`). This file (`kin.html`) is the whole frontend: it
+boots against `/api/kin` when reachable and falls back to a self-contained
+in-browser demo when opened from disk. [`kin-tokens.css`](kin-tokens.css) is
+the design-token sheet.
 
 Security notes for the prototype: passwords are compared as SHA-256 digests
 client-side (demo-grade — the real gate belongs server-side, see the spec),
