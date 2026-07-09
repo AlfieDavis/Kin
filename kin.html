@@ -211,6 +211,17 @@ select.finput{appearance:none; background-image:url("data:image/svg+xml,%3Csvg x
 .modal p.sub{text-align:center; color:var(--muted); font-size:13px; margin:0 0 20px; line-height:1.5}
 .err{color:var(--rust); font-size:12.5px; text-align:center; margin-top:10px; min-height:16px}
 
+/* ---------- context menu (right-click) ---------- */
+.ctxmenu{position:fixed; z-index:80; min-width:214px; padding:6px; background:linear-gradient(180deg,var(--ink-2),var(--ink));
+  border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); animation:pop .14s ease-out}
+.ctxmenu .cxh{padding:7px 11px 6px; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:250px; border-bottom:1px solid var(--line); margin-bottom:5px}
+.ctxmenu button{display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:8px 11px; border-radius:8px; font-size:13px; color:var(--bone-dim)}
+.ctxmenu button:hover{background:var(--ink-3); color:var(--bone)}
+.ctxmenu button .ci{width:16px; text-align:center; color:var(--gold-soft); flex:none; font-size:13px}
+.ctxmenu button.danger:hover{color:var(--rust)} .ctxmenu button.danger:hover .ci{color:var(--rust)}
+.ctxmenu hr{border:none; border-top:1px solid var(--line); margin:5px 8px}
+
 .toast{position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px); z-index:70; background:var(--ink-2); border:1px solid var(--gold-soft); color:var(--bone); padding:12px 20px; border-radius:12px; font-size:13.5px; box-shadow:var(--shadow); opacity:0; transition:.3s; pointer-events:none}
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 .toast b{color:var(--gold)}
@@ -377,8 +388,8 @@ const DB = {
 
 /* seed helpers */
 let _pid=0,_uid=0;
-function person(id,familyId,name,born,died,bio,extra={}){ DB.persons[id]={id,familyId,name,born,died,bio,occupation:extra.occ||null,place:extra.place||null,links:extra.links||[],contacts:extra.contacts||[],childOf:extra.childOf||null,status:extra.status||'approved'}; return id; }
-function union(id,a,b,extra={}){ DB.unions[id]={id,a,b,type:extra.type||'marriage',status:extra.status||'approved'}; return id; }
+function person(id,familyId,name,born,died,bio,extra={}){ DB.persons[id]={id,familyId,name,born,died,bio,occupation:extra.occ||null,place:extra.place||null,links:extra.links||[],contacts:extra.contacts||[],childOf:extra.childOf||null,childType:extra.childType||null,sex:extra.sex||null,status:extra.status||'approved'}; return id; }
+function union(id,a,b,extra={}){ DB.unions[id]={id,a,b,type:extra.type||'marriage',since:extra.since||null,until:extra.until||null,status:extra.status||'approved'}; return id; }
 
 /* ---- Blaker starting point ---- */
 person('b_jack','blaker','Jack Blaker','March 8, 1990',null,'Me.');
@@ -407,9 +418,13 @@ person('h_wilfred','harrow','Wilfred Cottrell',1870,1936,'Rose\'s father — pro
 person('h_ivy','harrow','Ivy Cottrell',1880,1965,'Née Pruett. Outlived nearly everyone she wrote to.');
 union('hu0b','h_wilfred','h_ivy');
 DB.persons['h_rose'].childOf='hu0b';
-/* Vera's branch — cousins for the relationship finder */
+/* Vera's branch — cousins for the relationship finder; her divorce and
+   remarriage demonstrate multiple unions on one person */
 person('h_gordon','harrow','Gordon Ashdown',1926,2001,'Second violin, first husband.');
-union('hu4','h_vera','h_gordon');
+union('hu4','h_vera','h_gordon',{type:'divorced',since:1950,until:1968});
+person('h_alan','harrow','Alan Bird',1928,2003,'Vera\'s second husband. Percussionist — she said she\'d had enough of strings.');
+union('hu10','h_vera','h_alan',{since:1972});
+person('h_june','harrow','June Bird',1973,null,'Vera\'s youngest, from her second marriage.',{childOf:'hu10'});
 person('h_clive','harrow','Clive Ashdown',1954,null,'Luthier. Vera\'s eldest.',{childOf:'hu4'});
 person('h_heather','harrow','Heather Ashdown',1957,2019,'Toured with three orchestras and a circus.',{childOf:'hu4'});
 person('h_priya','harrow','Priya Ashdown',1958,null,'Née Nair. Conductor; met Clive over a cracked cello.');
@@ -421,8 +436,8 @@ person('h_coral','harrow','Coral Voss',1960,null,'Sculptor. Eleanor\'s partner o
 union('hu6','h_eleanor','h_coral',{type:'partnership'});
 person('h_roger','harrow','Roger Harrow',1961,null,'The youngest of Arthur\'s three. Restores clocks like Edmund.',{childOf:'hu2'});
 person('h_lin','harrow','Lin Harrow',1963,null,'Née Chen. Horologist — they met at an auction, bidding against each other.');
-union('hu9','h_roger','h_lin');
-person('h_ken','harrow','Ken Harrow',1990,null,'Watchmaker in a world of phones.',{childOf:'hu9'});
+union('hu9','h_roger','h_lin',{since:1988});
+person('h_ken','harrow','Ken Harrow',1990,null,'Adopted as a baby; a Harrow through and through. Watchmaker in a world of phones.',{childOf:'hu9',childType:'adopted'});
 person('h_femke','harrow','Femke Harrow',1986,null,'Née de Vries. Cartographer.');
 union('hu7','h_daniel','h_femke');
 person('h_otis','harrow','Otis Harrow',2016,null,'Collects snail shells and facts about the moon.',{childOf:'hu7'});
@@ -440,7 +455,14 @@ union('hu8','h_sophie','h_amara',{type:'partnership'});
  ['h_ravi','Sound engineer','London'],['h_mira','Violin teacher','Manchester'],['h_daniel','Software engineer','Bristol'],
  ['h_femke','Cartographer','Bristol'],['h_otis',null,'Bristol'],['h_nell',null,'Bristol'],
  ['h_sophie','Doctor','Cardiff'],['h_amara','Epidemiologist','Cardiff'],
+ ['h_alan','Percussionist','Manchester'],['h_june','Music teacher','Leeds'],
 ].forEach(([id,occ,place])=>{ const p=DB.persons[id]; if(p){ p.occupation=occ; p.place=place; } });
+/* recorded sex, so kinship reads "grandmother", not "grandparent" */
+'h_josiah h_wilfred h_edmund h_arthur h_gordon h_alan h_thomas h_clive h_daniel h_roger h_ken h_ravi h_otis'.split(' ')
+  .forEach(id=>{ if(DB.persons[id]) DB.persons[id].sex='M'; });
+'h_clara h_ivy h_rose h_florence h_vera h_margaret h_grace h_eleanor h_coral h_heather h_priya h_lin h_femke h_sophie h_amara h_mira h_june h_nell'.split(' ')
+  .forEach(id=>{ if(DB.persons[id]) DB.persons[id].sex='F'; });
+DB.persons['b_jack'].sex='M';
 
 /* ================================================================
    state + helpers
@@ -804,6 +826,19 @@ const partnerIn = (pid,u)=> u.a===pid?u.b:u.a;
 const childrenOf = pid=>{ const kids=[]; unionsOf(pid).forEach(u=>{ Object.values(DB.persons).forEach(p=>{ if(p.childOf===u.id) kids.push(p); }); }); return kids; };
 const parentsOf = pid=>{ const p=P(pid); if(!p||!p.childOf) return []; const u=U(p.childOf); return [P(u.a),P(u.b)].filter(Boolean); };
 const primaryPartner = pid=>{ const u=unionsOf(pid).find(u=>u.status==='approved'); return u?P(partnerIn(pid,u)):null; };
+/* every approved union of a person, with the partner record (null = unrecorded) */
+const partnersOf = pid=>unionsOf(pid).filter(u=>u.status==='approved')
+  .map(u=>{ const o=partnerIn(pid,u); return {u, p:o?P(o):null}; });
+const UNION_WORD={marriage:'Marriage', partnership:'Partnership', divorced:'Divorced', separated:'Separated'};
+const unionYears = u=> (u.since||u.until) ? [u.since,u.until].filter(Boolean).join('–')+(u.until&&!u.since?' (until)':'') : '';
+/* gendered word: female / male / neutral */
+const gword = (sex,f,m,n)=> sex==='F'?f : sex==='M'?m : n;
+const partnerRole = (u,p)=>{
+  const t={marriage:gword(p&&p.sex,'Wife','Husband','Spouse'), partnership:'Partner',
+    divorced:gword(p&&p.sex,'Ex-wife','Ex-husband','Ex-spouse'), separated:'Separated'}[u.type]||'Spouse';
+  return t;
+};
+const CHILD_TYPE_WORD={adopted:'adopted', step:'step', foster:'foster'};
 /* climb one parent chain to the oldest recorded ancestor — so the Descendants
    tree roots at the top of the line and shows the whole known family, not just
    the focus person when they have parents but no children yet */
@@ -892,43 +927,105 @@ const SPGAP=14;
 function descHierarchy(rootId){
   const seen=new Set();
   function build(pid){
-    if(seen.has(pid)) return {pid, partner:null, children:[]}; seen.add(pid);
-    const partner=primaryPartner(pid);
-    const kids=childrenOf(pid).filter(k=>k.status==='approved').map(k=>build(k.id));
-    return {pid, partner: partner&&partner.status==='approved'?partner.id:null, children:kids};
+    if(seen.has(pid)) return {pid, spouses:[], children:[]}; seen.add(pid);
+    /* every union renders — first marriage, remarriage, partnership, divorce */
+    const spouses=partnersOf(pid).filter(({p})=>p && p.status==='approved' && !seen.has(p.id));
+    spouses.forEach(({p})=>seen.add(p.id));
+    const uorder={}; unionsOf(pid).forEach((u,i)=>uorder[u.id]=i);
+    const kids=childrenOf(pid).filter(k=>k.status==='approved')
+      .sort((a,b)=>(uorder[a.childOf]??99)-(uorder[b.childOf]??99)
+        || (Number(yearOf(a.born))||9999)-(Number(yearOf(b.born))||9999));
+    return {pid, spouses:spouses.map(s=>({uid:s.u.id, pid:s.p.id})), children:kids.map(k=>build(k.id))};
   }
   return d3.hierarchy(build(rootId));
 }
+/* plates of one family group, left→right; spouses alternate right, left, outer… */
+function nodeSeq(data){
+  const seq=[{pid:data.pid, person:true}];
+  data.spouses.forEach((s,i)=>{ const item={pid:s.pid, uid:s.uid}; if(i%2===0) seq.push(item); else seq.unshift(item); });
+  return seq;
+}
+const nodeWidthPx = d=> (1+d.data.spouses.length)*(PW+SPGAP);
+function unionBarLabel(u){
+  const yrs=[u.since,u.until].filter(Boolean).join('–');
+  if(u.type==='divorced') return yrs?('div. '+yrs):'div.';
+  if(u.type==='separated') return yrs?('sep. '+yrs):'sep.';
+  return yrs ? ((u.type==='partnership'?'':'m. ')+yrs) : '';
+}
+const PLATE_SUFFIX={marriage:' · married in', partnership:' · partner', divorced:' · divorced', separated:' · separated'};
 function renderDesc(){
   g.selectAll('*').remove(); addDefs();
   let rootId = state.descRoot || descRootOf(state.familyId);
   if(!P(rootId)) rootId = (approvedOf(state.familyId)[0]||{}).id;
   if(!rootId){ $('#hintchip').textContent='This record is empty — use “Add kin” to begin the line.'; return; }
   const root = descHierarchy(rootId);
-  d3.tree().nodeSize([2*PW+64,158]).separation((a,b)=>a.parent===b.parent?1.05:1.4)(root);
+  d3.tree().nodeSize([1,158]).separation((a,b)=>(nodeWidthPx(a)+nodeWidthPx(b))/2 + (a.parent===b.parent?36:64))(root);
+
+  /* pixel geometry per group: plate x-positions, marriage bars, and the point
+     each union's children drop from */
+  root.descendants().forEach(d=>{
+    const seq=nodeSeq(d.data), n=seq.length;
+    const xs=seq.map((_,i)=>(i-(n-1)/2)*(PW+SPGAP));
+    const pi=seq.findIndex(s=>s.person);
+    d._seq=seq; d._xs=xs; d._px=xs[pi];
+    d._drops={}; d._bars=[];
+    seq.forEach((s,j)=>{
+      if(s.person) return;
+      const level=Math.abs(j-pi), dir=j>pi?1:-1, u=U(s.uid)||{id:s.uid,type:'marriage'};
+      if(level===1){
+        const x1=d._px+dir*PW/2, x2=xs[j]-dir*PW/2;
+        d._bars.push({u, pts:[[x1,0],[x2,0]], mid:[(x1+x2)/2,0], long:false});
+        d._drops[s.uid]={x:(x1+x2)/2, y:0};
+      } else {
+        /* a third or later union: route the bar over the plates between */
+        const yb=-PH/2-8-(level-2)*9;
+        const sx=d._px+dir*(PW/2-10-(level-2)*10);
+        const ex=xs[j];
+        d._bars.push({u, pts:[[sx,-PH/2],[sx,yb],[ex,yb],[ex,-PH/2]], mid:[(sx+ex)/2,yb], long:true});
+        d._drops[s.uid]={x:xs[j]-dir*(PW/2+SPGAP/2), y:yb};
+      }
+    });
+  });
 
   g.append('g').attr('class','links').selectAll('path').data(root.links()).join('path')
-    .attr('fill','none').attr('stroke','var(--gold)').attr('stroke-opacity',.5).attr('stroke-width',1.4)
-    .attr('d',d=>{const sx=d.source.x,sy=d.source.y+PH/2,tx=d.target.x,ty=d.target.y-PH/2,my=(sy+ty)/2;
+    .attr('fill','none').attr('stroke','var(--gold)')
+    .attr('stroke-opacity',d=>P(d.target.data.pid)?.childType?.38:.5)
+    .attr('stroke-dasharray',d=>P(d.target.data.pid)?.childType?'5 4':null)
+    .attr('stroke-width',1.4)
+    .attr('d',d=>{
+      const t=P(d.target.data.pid);
+      const drop=(t&&t.childOf&&d.source._drops[t.childOf])||null;
+      const sx=d.source.x+(drop?drop.x:d.source._px), sy=d.source.y+(drop?drop.y:PH/2);
+      const tx=d.target.x+d.target._px, ty=d.target.y-PH/2, my=(d.source.y+PH/2+ty)/2;
       return settings.links==='stepped' ? `M${sx},${sy} V${my} H${tx} V${ty}` : `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;});
 
   const ng=g.append('g').selectAll('g').data(root.descendants()).join('g').attr('transform',d=>`translate(${d.x},${d.y})`);
   ng.each(function(d){
-    const el=d3.select(this), p=P(d.data.pid), partner=d.data.partner?P(d.data.partner):null;
-    if(partner){
-      const off=(PW+SPGAP)/2;
-      el.append('line').attr('x1',-off+PW/2).attr('y1',0).attr('x2',off-PW/2).attr('y2',0).attr('stroke','var(--gold-soft)').attr('stroke-width',1.4);
-      plate(el.append('g').attr('transform',`translate(${-off},0)`), p, false);
-      plate(el.append('g').attr('transform',`translate(${off},0)`), partner, true);
-    } else {
-      plate(el.append('g'), p, false);
-    }
+    const el=d3.select(this);
+    d._bars.forEach(b=>{
+      const u=b.u;
+      const dash = u.type==='partnership' ? '6 4' : (u.type==='divorced'||u.type==='separated') ? '2 4' : null;
+      const path=b.pts.map((pt,i)=>(i?'L':'M')+pt[0]+','+pt[1]).join(' ');
+      el.append('path').attr('d',path).attr('fill','none').attr('stroke','var(--gold-soft)').attr('stroke-width',1.4).attr('stroke-dasharray',dash);
+      el.append('path').attr('d',path).attr('fill','none').attr('stroke','transparent').attr('stroke-width',13).style('cursor','pointer')
+        .on('click',e=>{ e.stopPropagation(); openPanelBare(); openUnion(u.id); })
+        .on('contextmenu',e=>unionCtx(e,u.id));
+      const lbl=unionBarLabel(u);
+      if(settings.showDates && lbl && b.long) el.append('text').attr('x',b.mid[0]).attr('y',b.mid[1]-5).attr('text-anchor','middle')
+        .attr('fill','var(--muted)').style('font','400 9px "JetBrains Mono",monospace').text(lbl);
+    });
+    d._seq.forEach((s,j)=>{
+      const p=P(s.pid); if(!p) return;
+      const suffix=s.person?'':(PLATE_SUFFIX[(U(s.uid)||{}).type]||'');
+      plate(el.append('g').attr('transform',`translate(${d._xs[j]},0)`), p, suffix);
+    });
   });
   reveal(); fitView();
 }
 let _clipSeq=0;
-function plate(sel,p,married){
-  const gg=sel.attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(p.id);});
+function plate(sel,p,suffix){
+  const gg=sel.attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(p.id);})
+    .on('contextmenu',(e)=>personCtx(e,p.id));
   const pl=gg.append('g').attr('class','node-plate');
   pl.append('rect').attr('x',-PW/2).attr('y',-PH/2).attr('width',PW).attr('height',PH).attr('rx',11)
     .attr('fill','url(#plateGrad)').attr('stroke','var(--line)').attr('stroke-width',1).attr('filter','url(#plateShadow)');
@@ -946,7 +1043,7 @@ function plate(sel,p,married){
   }
   pl.append('text').attr('x',tx).attr('y',settings.showDates?-3:4).attr('fill','var(--bone)').style('font','500 13px Fraunces,serif').text(trunc(p.name,chars));
   if(settings.showDates) pl.append('text').attr('x',tx).attr('y',14).attr('fill','var(--muted)').style('font','400 10px "JetBrains Mono",monospace')
-    .text(trunc(dates(p)+(married?' · married in':''),Math.round((src?17:22)*PW/158)));
+    .text(trunc(dates(p)+(suffix||''),Math.round((src?17:22)*PW/158)));
   return gg;
 }
 
@@ -983,9 +1080,10 @@ function renderAnc(){
   // connectors (child right edge -> bracket -> parent left edge)
   const links=layer.append('g').attr('class','links');
   for(let gen=0; gen<GEN; gen++) for(let k=0;k<2**gen;k++){ const childPid=pidAt(gen,k); if(!childPid) continue;
-    const cx=gen*colGap, cy=pos[gen][k].y;
+    const cx=gen*colGap, cy=pos[gen][k].y, adopted=!!(P(childPid)||{}).childType;
     [0,1].forEach(bit=>{ const pk=2*k+bit, ppid=pidAt(gen+1,pk); const px=(gen+1)*colGap, py=pos[gen+1][pk].y, midx=(cx+px)/2, known=!!ppid;
-      links.append('path').attr('fill','none').attr('stroke','var(--gold)').attr('stroke-opacity',known?.5:.16).attr('stroke-width',1.3).attr('stroke-dasharray',known?'':'4 4')
+      links.append('path').attr('fill','none').attr('stroke','var(--gold)').attr('stroke-opacity',known?(adopted?.38:.5):.16).attr('stroke-width',1.3)
+        .attr('stroke-dasharray',known?(adopted?'5 4':''):'4 4')
         .attr('d',`M${cx+PW/2},${cy} H${midx} V${py} H${px-PW/2}`); });
   }
 
@@ -1027,7 +1125,8 @@ function renderTimeline(){
     .attr('stroke','var(--verd)').attr('stroke-opacity',.45).attr('stroke-dasharray','3 4');
   rows.forEach((r,i)=>{
     const y=i*rowH, w=Math.max(10,X(r.d)-X(r.b));
-    const gg=layer.append('g').attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(r.p.id);});
+    const gg=layer.append('g').attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(r.p.id);})
+      .on('contextmenu',(e)=>personCtx(e,r.p.id));
     gg.append('rect').attr('x',X(r.b)).attr('y',y).attr('width',w).attr('height',20).attr('rx',10)
       .attr('fill','url(#plateGrad)').attr('stroke',(settings.livingMarker&&isLiving(r.p))?'var(--verd)':'var(--gold-soft)').attr('stroke-width',1).attr('filter','url(#plateShadow)');
     gg.append('text').attr('x',X(r.b)-9).attr('y',y+14).attr('text-anchor','end').attr('fill','var(--bone)')
@@ -1044,7 +1143,8 @@ function renderTimeline(){
     und.forEach((r,i)=>{
       const cw=150, per=Math.max(1,Math.floor((y1-y0)*PX/cw)||4);
       const gx=(i%per)*cw, gy=bandY+22+Math.floor(i/per)*30;
-      const gg=layer.append('g').attr('class','node-g').attr('transform',`translate(${gx},${gy})`).on('click',(e)=>{e.stopPropagation(); openPerson(r.p.id);});
+      const gg=layer.append('g').attr('class','node-g').attr('transform',`translate(${gx},${gy})`).on('click',(e)=>{e.stopPropagation(); openPerson(r.p.id);})
+        .on('contextmenu',(e)=>personCtx(e,r.p.id));
       gg.append('rect').attr('x',0).attr('y',-14).attr('width',cw-12).attr('height',22).attr('rx',11)
         .attr('fill','url(#plateGrad)').attr('stroke','var(--line)').attr('stroke-dasharray','4 3');
       gg.append('text').attr('x',12).attr('y',1).attr('fill','var(--bone-dim)').style('font','500 11px Fraunces,serif').text(trunc(r.p.name,18));
@@ -1083,6 +1183,17 @@ function familyHealth(fid){
   list.forEach(p=>{
     const dp=dateProblem(p.born,p.died); if(dp) issues.push({p, why:dp});
   });
+  // impossible generations: born before a biological parent could have them, or after the parent died
+  list.forEach(p=>{
+    if(p.childType) return; // adopted/step/foster — age gaps are expected
+    const by=Number(yearOf(p.born)); if(!by) return;
+    parentsOf(p.id).forEach(par=>{
+      const pb=Number(yearOf(par.born)), pd=par.died!=null?Number(yearOf(par.died)):null;
+      const first=par.name.split(' ')[0];
+      if(pb && by<pb+12) issues.push({p, why:`Born when ${first} was ${Math.max(0,by-pb)} — check the dates.`});
+      else if(pd && by>pd+1) issues.push({p, why:`Born after ${first} died — check the dates.`});
+    });
+  });
   // disconnected: no parents, no partner, no children — a floating record
   if(list.length>1){
     list.forEach(p=>{
@@ -1105,8 +1216,8 @@ function renderHealth(){
     ${issues.length>8?`<div class="hmore">+${issues.length-8} more</div>`:''}</div>`;
 }
 function exportCSV(){
-  const rows=[['Name','Born','Died','Occupation','Place','Note']];
-  approvedOf(state.familyId).forEach(p=>rows.push([p.name,p.born||'',p.died||'',p.occupation||'',p.place||'',(p.bio||'').replace(/\r?\n/g,' ')]));
+  const rows=[['Name','Sex','Born','Died','Occupation','Place','Relationship to parents','Note']];
+  approvedOf(state.familyId).forEach(p=>rows.push([p.name,p.sex||'',p.born||'',p.died||'',p.occupation||'',p.place||'',p.childType||'',(p.bio||'').replace(/\r?\n/g,' ')]));
   const csv=rows.map(r=>r.map(c=>{ const s=String(c); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\r\n');
   download(`kin-${state.familyId}.csv`, csv, 'text/csv');
   toast('CSV downloaded.');
@@ -1143,7 +1254,7 @@ function renderRecords(){
   $('#recGrid').innerHTML = list.map(p=>{
     const partner=primaryPartner(p.id);
     const cross = p.familyId!==state.familyId;
-    return `<button class="plate" onclick="openPerson('${htmlId(p.id)}')">
+    return `<button class="plate" onclick="openPerson('${htmlId(p.id)}')" oncontextmenu="personCtx(event,'${htmlId(p.id)}')">
       ${cross?`<span class="fam-chip">${esc(DB.families[p.familyId].name)}</span>`:''}
       <div class="av">${avFor(p)}</div>
       <h3>${esc(p.name)}</h3>
@@ -1179,9 +1290,9 @@ function render(){
   $('#zoomers').style.visibility=rec?'hidden':'visible';
   $('#hintchip').style.display=rec?'none':'block';
   $('#hintchip').innerHTML = ({
-    anc:'Ancestor chart · the focus person sits on the left, each column climbs one generation. Dashed plates are missing parents — click to add.',
-    time:'Timeline · every dated life as a bar, oldest first. The dashed green line is today. Click a bar to open the record.',
-  })[state.view] || 'Descendant tree · couples share a bar, children hang below. Click anyone to open their record.';
+    anc:'Ancestor chart · the focus person sits on the left, each column climbs one generation. Dashed plates are missing parents — click to add. Right-click for quick actions.',
+    time:'Timeline · every dated life as a bar, oldest first. The dashed green line is today. Right-click a bar for quick actions.',
+  })[state.view] || 'Descendant tree · every union is a bar (dashed = partnership, dotted = ended), children hang from theirs. Right-click anyone — or any bar — for quick actions.';
 
   /* young record: offer the first branches right on the stage */
   const ob=$('#onboard');
@@ -1245,6 +1356,80 @@ async function switchFamily(id){
 function syncView(){ $('#viewToggle').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view)); }
 
 /* ================================================================
+   CONTEXT MENU — right-click anywhere useful
+   ================================================================ */
+let _ctxEl=null;
+function closeCtx(){ if(_ctxEl){ _ctxEl.remove(); _ctxEl=null; } }
+/* items: {l:label, i:icon, fn:handler, danger:true} or '—' for a divider */
+function openCtx(x,y,head,items){
+  closeCtx();
+  const el=document.createElement('div'); el.className='ctxmenu';
+  if(head){ const h=document.createElement('div'); h.className='cxh'; h.textContent=head; el.appendChild(h); }
+  items.filter(Boolean).forEach(it=>{
+    if(it==='—'){ el.appendChild(document.createElement('hr')); return; }
+    const b=document.createElement('button');
+    if(it.danger) b.className='danger';
+    b.innerHTML=`<span class="ci">${it.i||''}</span>`;
+    b.appendChild(document.createTextNode(it.l));
+    b.onclick=()=>{ closeCtx(); it.fn(); };
+    el.appendChild(b);
+  });
+  document.body.appendChild(el); _ctxEl=el;
+  const r=el.getBoundingClientRect();
+  el.style.left=Math.max(8,Math.min(x, innerWidth-r.width-8))+'px';
+  el.style.top=Math.max(8,Math.min(y, innerHeight-r.height-8))+'px';
+}
+function personCtx(e,id){
+  e.preventDefault(); e.stopPropagation();
+  const p=P(id); if(!p) return;
+  const canEdit = REMOTE ? canEditHere() : state.admin;
+  const canSuggest = REMOTE && ME.user && !canEdit;
+  openCtx(e.clientX,e.clientY, p.name, [
+    {l:'Open record', i:'⧉', fn:()=>openPerson(id)},
+    '—',
+    {l:'Add child…', i:'＋', fn:()=>openAdd('child',id)},
+    {l:'Add partner…', i:'⚭', fn:()=>openAdd('partner',id)},
+    {l:parentsOf(id).length===1?'Add other parent…':'Add parent…', i:'＋', fn:()=>openAdd('parent',id)},
+    '—',
+    {l:'Show ancestors', i:'↑', fn:()=>{ state.ancFocus=id; state.view='anc'; render(); }},
+    {l:'Show descendants', i:'↓', fn:()=>{ state.descRoot=id; state.view='desc'; render(); }},
+    {l:'How related to…?', i:'⇄', fn:()=>{ state.relA=id; state.relB=null; openRelate(); }},
+    REMOTE?{l:'Copy link', i:'⎘', fn:()=>copyPersonLink(id)}:null,
+    (canEdit||canSuggest)?'—':null,
+    (canEdit||canSuggest)?{l:canEdit?'Edit record…':'Suggest an edit…', i:'✎', fn:()=>{ openPanelBare(); openEdit(id); }}:null,
+    (canEdit&&isAdminHere())?{l:'Delete record…', i:'✕', danger:true, fn:()=>deletePerson(id)}:null,
+  ]);
+}
+function unionCtx(e,uid){
+  e.preventDefault(); e.stopPropagation();
+  const u=U(uid); if(!u) return;
+  const a=u.a?P(u.a):null, b=u.b?P(u.b):null;
+  const canEdit = REMOTE ? canEditHere() : state.admin;
+  openCtx(e.clientX,e.clientY, [a&&a.name,b&&b.name].filter(Boolean).join(' ⚭ ')||'Union', [
+    canEdit?{l:'Edit union…', i:'⚭', fn:()=>{ openPanelBare(); openUnion(uid); }}:{l:'View union', i:'⚭', fn:()=>{ openPanelBare(); openUnion(uid); }},
+    '—',
+    a?{l:'Open '+a.name.split(' ')[0], i:'⧉', fn:()=>openPerson(a.id)}:null,
+    b?{l:'Open '+b.name.split(' ')[0], i:'⧉', fn:()=>openPerson(b.id)}:null,
+  ]);
+}
+function canvasCtx(e){
+  e.preventDefault();
+  openCtx(e.clientX,e.clientY, fam().name+' — '+(({desc:'descendants',anc:'ancestors',time:'timeline'})[state.view]||'record'), [
+    {l:'Add kin…', i:'＋', fn:()=>openAdd('root',null)},
+    {l:'How related?', i:'⇄', fn:()=>openRelate()},
+    '—',
+    {l:'Fit to view', i:'⊙', fn:fitView},
+    {l:'Download as image', i:'⤓', fn:exportPNG},
+    '—',
+    state.view!=='desc'?{l:'Descendants view', i:'↓', fn:()=>{ state.view='desc'; render(); }}:null,
+    state.view!=='anc'?{l:'Ancestors view', i:'↑', fn:()=>{ state.view='anc'; render(); }}:null,
+    state.view!=='time'?{l:'Timeline view', i:'—', fn:()=>{ state.view='time'; render(); }}:null,
+    {l:'Records view', i:'≡', fn:()=>{ state.view='records'; render(); }},
+  ]);
+}
+function openPanelBare(){ $('#panel').classList.remove('wide'); $('#panel').classList.add('open'); }
+
+/* ================================================================
    PERSON PANEL  (with relationship-aware actions)
    ================================================================ */
 function openPerson(id,opts={}){
@@ -1277,10 +1462,32 @@ function openPerson(id,opts={}){
   (p.links||[]).forEach(l=>{ const url=safeUrl(l); if(url) body+=`<div class="field"><label>Link</label><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(l)}</a></div>`; });
   (p.contacts||[]).forEach(c=>{ const email=safeEmail(c); if(email) body+=`<div class="field"><label>Contact</label><a href="mailto:${esc(email)}">${esc(email)}</a></div>`; });
   const rel=[];
-  parents.forEach(pa=>rel.push(relRow(pa,'Parent')));
-  if(partner) rel.push(relRow(partner, unionsOf(id)[0]?.type==='partnership'?'Partner':'Spouse'));
-  kids.forEach(k=>rel.push(relRow(k,'Child')));
+  const ctw=p.childType?CHILD_TYPE_WORD[p.childType]:null;
+  parents.forEach(pa=>{
+    let role=gword(pa.sex,'Mother','Father','Parent');
+    if(ctw==='adopted') role='Adoptive '+role.toLowerCase();
+    else if(ctw==='step') role='Step-'+role.toLowerCase();
+    else if(ctw==='foster') role='Foster '+role.toLowerCase();
+    rel.push(relRow(pa,role));
+  });
+  /* siblings: same union = full; sharing one parent = half */
+  const sibSeen=new Set([id]);
+  if(p.childOf) Object.values(DB.persons).forEach(s=>{
+    if(s.id!==id && s.childOf===p.childOf && s.status==='approved'){ sibSeen.add(s.id); rel.push(relRow(s,gword(s.sex,'Sister','Brother','Sibling'))); }
+  });
+  parents.forEach(pa=>childrenOf(pa.id).forEach(s=>{
+    if(!sibSeen.has(s.id) && s.status==='approved'){ sibSeen.add(s.id); rel.push(relRow(s,'Half-'+gword(s.sex,'sister','brother','sibling'))); }
+  }));
+  partnersOf(id).forEach(({u,p:pp})=>{
+    if(pp && pp.status==='approved') rel.push(relRow(pp, partnerRole(u,pp)+(unionYears(u)?' · '+unionYears(u):'')));
+  });
+  kids.forEach(k=>rel.push(relRow(k, gword(k.sex,'Daughter','Son','Child')+(k.childType?' · '+CHILD_TYPE_WORD[k.childType]:''))));
   if(rel.length) body+=`<div class="field"><label>Relations</label><div class="rel-list">${rel.join('')}</div></div>`;
+  if(canEdit){
+    const us=partnersOf(id);
+    if(us.length) body+=`<div class="field"><label>Unions</label>${us.map(({u,p:pp})=>
+      `<button class="act" style="width:100%;margin-bottom:7px" onclick="openUnion('${htmlId(u.id)}')">⚭ ${esc(UNION_WORD[u.type]||'Union')}${pp?' with '+esc(pp.name.split(' ')[0]):''}${unionYears(u)?' · '+esc(unionYears(u)):''} — edit</button>`).join('')}</div>`;
+  }
   $('#panelBody').innerHTML=body;
   $('#panelFoot').style.display='none';
   $('#panel').classList.add('open');
@@ -1296,24 +1503,46 @@ function openAdd(relation, anchorId){
   const anchor=anchorId?P(anchorId):null;
   const titles={child:'Add a child', partner:'Add a partner', parent:'Add a parent', root:'Add kin'};
   const ctx={
-    child:`New child of ${strong(anchor?.name||'')}${primaryPartner(anchorId)?` and ${esc(primaryPartner(anchorId).name)}`:''}.`,
-    partner:`New spouse or partner of ${strong(anchor?.name||'')}.`,
+    child:`New child of ${strong(anchor?.name||'')}. Pick the other parent below — with them, with someone new, or leave it unrecorded for now.`,
+    partner:`New spouse or partner of ${strong(anchor?.name||'')}. A person can hold any number of unions — marriages, remarriages, partnerships, divorces.`,
     parent: anchor?`New parent of ${strong(anchor.name)}. This extends the line upward — the parent can then gain their own ancestors.`:'',
     root:'A new unlinked person in this family. Connect relations afterward.'
   };
+  const partners=anchorId?partnersOf(anchorId).filter(({p})=>p&&p.status==='approved'):[];
+  const childBits = relation==='child'?`
+    <div class="field"><label>Other parent</label>
+      <select class="finput" id="f_with" onchange="document.getElementById('f_newpartner').style.display=this.value==='__new'?'block':'none'">
+        <option value="">Not recorded / unknown</option>
+        ${partners.map(({p:pp},i)=>`<option value="${htmlId(pp.id)}"${partners.length===1&&i===0?' selected':''}>${esc(pp.name)}</option>`).join('')}
+        <option value="__new">＋ Someone new — add them too</option>
+      </select></div>
+    <div class="field" id="f_newpartner" style="display:none"><label>New partner's full name</label><input class="finput" id="f_pname" placeholder="e.g. Grace Okafor"></div>
+    <div class="field"><label>Relationship to parents</label><select class="finput" id="f_ctype">
+      <option value="">Biological</option><option value="adopted">Adopted</option><option value="step">Step</option><option value="foster">Foster</option></select></div>`:'';
+  const partnerBits = relation==='partner'?`
+    <div class="field"><label>Union</label><select class="finput" id="f_utype">
+      <option value="marriage">Marriage</option><option value="partnership">Partnership</option>
+      <option value="divorced">Former marriage — divorced</option><option value="separated">Separated</option></select></div>
+    <div class="row2">
+      <div class="field"><label>Together since (optional)</label><input class="finput" id="f_usince" placeholder="1972"></div>
+      <div class="field"><label>Until (optional)</label><input class="finput" id="f_uuntil" placeholder="—"></div>
+    </div>`:'';
   $('#panel').classList.remove('wide');
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>${esc(titles[relation])}</h2><div class="pv-dates" style="color:var(--muted)">to the ${esc(fam().name)} record</div>`;
   $('#panelBody').innerHTML=`
     <p class="hint">${ctx[relation]}</p>
     <div class="field"><label>Full name</label><input class="finput" id="f_name" placeholder="e.g. Mary Blaker"></div>
+    ${childBits}${partnerBits}
     <div class="row2">
+      <div class="field"><label>Sex (optional)</label><select class="finput" id="f_sex">
+        <option value="">Not recorded</option><option value="F">Female</option><option value="M">Male</option><option value="X">Other</option></select></div>
       <div class="field"><label>Born</label><input class="finput" id="f_born" placeholder="March 8, 1990"></div>
-      <div class="field"><label>Died (blank if living)</label><input class="finput" id="f_died" placeholder="—"></div>
     </div>
     <div class="row2">
+      <div class="field"><label>Died (blank if living)</label><input class="finput" id="f_died" placeholder="—"></div>
       <div class="field"><label>Occupation (optional)</label><input class="finput" id="f_occ" placeholder="Clockmaker"></div>
-      <div class="field"><label>Place (optional)</label><input class="finput" id="f_place" placeholder="Lewes, Sussex"></div>
     </div>
+    <div class="field"><label>Place (optional)</label><input class="finput" id="f_place" placeholder="Lewes, Sussex"></div>
     <div class="field"><label>Note (optional)</label><textarea class="finput" id="f_bio" placeholder="A line or two…"></textarea></div>
     <div class="field"><label>Link or contact (optional)</label><input class="finput" id="f_link" placeholder="https://…  or  name@email.com"></div>
     <input type="hidden" id="f_rel" value="${esc(relation)}"><input type="hidden" id="f_anchor" value="${htmlId(anchorId||'')}">
@@ -1391,13 +1620,25 @@ async function submitKin(){
   if($('#f_born').value.trim() && born==null){ toast('Born must be a year or date.'); return; }
   if($('#f_died').value.trim() && died==null){ toast('Died must be a year or date.'); return; }
   const dp=dateProblem(born,died); if(dp){ toast(esc(dp)); return; }
+  const sex=$('#f_sex')?.value||null;
+  /* child options: existing partner id | '__new' | '' (unknown) */
+  const withVal=$('#f_with')?$('#f_with').value:'';
+  const newPartnerName=withVal==='__new'?($('#f_pname')?.value||'').trim():'';
+  if(withVal==='__new' && !newPartnerName){ toast('Name the new partner — or choose “Not recorded”.'); $('#f_pname')?.focus(); return; }
+  const childType=$('#f_ctype')?.value||null;
+  /* partner options */
+  const unionType=$('#f_utype')?.value||'marriage';
+  const uSince=($('#f_usince')?.value||'').trim()||null, uUntil=($('#f_uuntil')?.value||'').trim()||null;
+  if(uSince&&uUntil&&Number(yearOf(uSince))&&Number(yearOf(uUntil))&&Number(yearOf(uUntil))<Number(yearOf(uSince))){ toast('The union can’t end before it began.'); return; }
   if(REMOTE){
     if(!ME.user){ toast('Sign in to add kin.'); openAccount(); return; }
     try{
       const d=await api('/families/'+encodeURIComponent(state.familyId)+'/persons',{method:'POST',
         body:{name, born:born==null?null:String(born), died:died==null?null:String(died), bio:$('#f_bio').value.trim(),
           occupation:$('#f_occ').value.trim(), place:$('#f_place').value.trim(),
-          links:url?[url]:[], contacts:email?[email]:[], relation:rel||'root', anchorId:anchorId||null}});
+          links:url?[url]:[], contacts:email?[email]:[], relation:rel||'root', anchorId:anchorId||null,
+          sex, childType, withId:(withVal&&withVal!=='__new')?withVal:null, newPartnerName:newPartnerName||null,
+          unionType, since:uSince, until:uUntil}});
       closePanel();
       await loadFamily(state.familyId); await loadPending();
       toast(d.status==='approved' ? `${strong(name)} added.` : `${strong(name)} submitted — a family admin will review it.`);
@@ -1405,19 +1646,36 @@ async function submitKin(){
     }catch(e){ toast(esc(e.message)); }
     return;
   }
+  const newUnion=(a,b,extra={})=>{ const uid='u'+(++_uid)+Date.now().toString().slice(-3);
+    DB.unions[uid]={id:uid,a,b,type:extra.type||'marriage',since:extra.since||null,until:extra.until||null,status:'approved'}; return DB.unions[uid]; };
   const id='x'+(++_pid)+Date.now().toString().slice(-4);
   const np={ id, familyId:state.familyId, name, born,
     died, bio:$('#f_bio').value.trim(),
     occupation:$('#f_occ').value.trim()||null, place:$('#f_place').value.trim()||null,
-    links:url?[url]:[], contacts:email?[email]:[], childOf:null, status: state.admin?'approved':'pending' };
+    links:url?[url]:[], contacts:email?[email]:[], childOf:null, childType:null, sex,
+    status: state.admin?'approved':'pending' };
   DB.persons[id]=np;
   // wire the relationship
-  if(rel==='child' && anchorId){ let u=unionsOf(anchorId).find(u=>u.status==='approved'); if(!u){ u={id:'u'+(++_uid)+Date.now().toString().slice(-3),a:anchorId,b:null,type:'marriage',status:'approved'}; DB.unions[u.id]=u; } np.childOf=u.id; }
-  else if(rel==='partner' && anchorId){ const uid='u'+(++_uid)+Date.now().toString().slice(-3); DB.unions[uid]={id:uid,a:anchorId,b:id,type:'marriage',status:'approved'}; }
+  if(rel==='child' && anchorId){
+    let u=null;
+    if(withVal==='__new'){
+      const partnerId='x'+(++_pid)+Date.now().toString().slice(-4);
+      DB.persons[partnerId]={id:partnerId, familyId:state.familyId, name:newPartnerName, born:null, died:null, bio:'',
+        occupation:null, place:null, links:[], contacts:[], childOf:null, childType:null, sex:null, status:np.status};
+      u=newUnion(anchorId,partnerId);
+    } else if(withVal){
+      u=unionsOf(anchorId).find(x=>x.a===withVal||x.b===withVal) || newUnion(anchorId,withVal);
+    } else {
+      /* unknown other parent: a single-parent union, never someone else's */
+      u=unionsOf(anchorId).find(x=>(x.a===anchorId&&!x.b)||(x.b===anchorId&&!x.a)) || newUnion(anchorId,null);
+    }
+    np.childOf=u.id; np.childType=childType;
+  }
+  else if(rel==='partner' && anchorId){ newUnion(anchorId,id,{type:unionType,since:uSince,until:uUntil}); }
   else if(rel==='parent' && anchorId){
     const child=P(anchorId);
     if(child.childOf){ const u=U(child.childOf); if(!u.a) u.a=id; else if(!u.b) u.b=id; else { toast('Both parents already recorded.'); } }
-    else { const uid='u'+(++_uid)+Date.now().toString().slice(-3); DB.unions[uid]={id:uid,a:id,b:null,type:'marriage',status:'approved'}; child.childOf=uid; }
+    else { const u=newUnion(id,null); child.childOf=u.id; }
   }
   closePanel(); saveDB();
   if(state.admin){ toast(`${strong(name)} added.`); render(); }
@@ -1438,11 +1696,17 @@ function openEdit(id){
         ${photoSrc(p)?`<button class="btn-ghost" style="flex:1" onclick="removePhoto('${htmlId(id)}')">Remove</button>`:''}
       </div></div>`:''}
     <div class="field"><label>Full name</label><input class="finput" id="e_name" value="${esc(p.name)}"></div>
-    <div class="row2"><div class="field"><label>Born</label><input class="finput" id="e_born" value="${esc(p.born||'')}"></div>
-    <div class="field"><label>Died</label><input class="finput" id="e_died" value="${esc(p.died||'')}"></div></div>
-    <div class="row2"><div class="field"><label>Occupation</label><input class="finput" id="e_occ" value="${esc(p.occupation||'')}"></div>
-    <div class="field"><label>Place</label><input class="finput" id="e_place" value="${esc(p.place||'')}"></div></div>
-    <div class="field"><label>Note</label><textarea class="finput" id="e_bio">${esc(p.bio||'')}</textarea></div>`;
+    <div class="row2"><div class="field"><label>Sex</label><select class="finput" id="e_sex">
+      ${[['','Not recorded'],['F','Female'],['M','Male'],['X','Other']].map(([v,l])=>`<option value="${v}"${(p.sex||'')===v?' selected':''}>${l}</option>`).join('')}</select></div>
+    <div class="field"><label>Born</label><input class="finput" id="e_born" value="${esc(p.born||'')}"></div></div>
+    <div class="row2"><div class="field"><label>Died</label><input class="finput" id="e_died" value="${esc(p.died||'')}"></div>
+    <div class="field"><label>Occupation</label><input class="finput" id="e_occ" value="${esc(p.occupation||'')}"></div></div>
+    <div class="field"><label>Place</label><input class="finput" id="e_place" value="${esc(p.place||'')}"></div>
+    ${p.childOf?`<div class="field"><label>Relationship to parents</label><select class="finput" id="e_ctype">
+      ${[['','Biological'],['adopted','Adopted'],['step','Step'],['foster','Foster']].map(([v,l])=>`<option value="${v}"${(p.childType||'')===v?' selected':''}>${l}</option>`).join('')}</select></div>`:''}
+    <div class="field"><label>Note</label><textarea class="finput" id="e_bio">${esc(p.bio||'')}</textarea></div>
+    ${(REMOTE?canEditHere():state.admin)&&partnersOf(id).length?`<div class="divlabel">Unions</div>
+      ${partnersOf(id).map(({u,p:pp})=>`<button class="act" style="width:100%;margin-bottom:8px" onclick="openUnion('${htmlId(u.id)}')">⚭ ${esc(UNION_WORD[u.type]||'Union')}${pp?' with '+esc(pp.name):''}${unionYears(u)?' · '+esc(unionYears(u)):''}</button>`).join('')}`:''}`;
   $('#panelFoot').style.display='flex';
   $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="openPerson('${htmlId(id)}')">Cancel</button><button class="btn-fill" onclick="saveEdit('${htmlId(id)}')">Save changes</button>`;
 }
@@ -1455,7 +1719,8 @@ async function saveEdit(id){
     try{
       const d=await api('/persons/'+encodeURIComponent(id),{method:'PATCH',
         body:{name:$('#e_name').value.trim(), born:born==null?'':String(born), died:died==null?'':String(died),
-          bio:$('#e_bio').value.trim(), occupation:$('#e_occ').value.trim(), place:$('#e_place').value.trim()}});
+          bio:$('#e_bio').value.trim(), occupation:$('#e_occ').value.trim(), place:$('#e_place').value.trim(),
+          sex:$('#e_sex').value, childType:$('#e_ctype')?$('#e_ctype').value:undefined}});
       await loadFamily(state.familyId);
       toast(d.applied ? 'Record updated.' : 'Edit submitted — a family admin will review it.');
       if(P(id)) openPerson(id); else closePanel();
@@ -1465,6 +1730,7 @@ async function saveEdit(id){
   }
   const p=P(id); p.name=$('#e_name').value.trim()||p.name; p.born=born; p.died=died; p.bio=$('#e_bio').value.trim();
   p.occupation=$('#e_occ').value.trim()||null; p.place=$('#e_place').value.trim()||null;
+  p.sex=$('#e_sex').value||null; if($('#e_ctype')) p.childType=$('#e_ctype').value||null;
   saveDB(); toast(`${strong(p.name)} updated.`); openPerson(id); render();
 }
 /* ---- person photos: resized in the browser, stored behind family access ---- */
@@ -1497,6 +1763,67 @@ async function removePhoto(id){
     toast('Photo removed.'); openEdit(id); render();
   }catch(e){ toast(esc(e.message)); }
 }
+/* ================================================================
+   UNION EDITOR — type, years, removal
+   ================================================================ */
+function openUnion(uid){
+  const u=U(uid); if(!u){ toast('That union is no longer in the record.'); return; }
+  const a=u.a?P(u.a):null, b=u.b?P(u.b):null;
+  const kids=Object.values(DB.persons).filter(x=>x.childOf===uid && x.status==='approved');
+  const canEdit = REMOTE ? canEditHere() : state.admin;
+  $('#panel').classList.remove('wide');
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button>
+    <h2>${esc(UNION_WORD[u.type]||'Union')}</h2>
+    <div class="pv-dates">${esc([a&&a.name,b&&b.name].filter(Boolean).join(' ⚭ ')||'One recorded parent')}${unionYears(u)?' · '+esc(unionYears(u)):''}</div>`;
+  let body=`<div class="field"><label>Partners</label><div class="rel-list">
+    ${[a,b].filter(Boolean).map(x=>relRow(x,'')).join('')||'<div class="empty">No partner recorded — the other parent is unknown.</div>'}</div></div>`;
+  if(canEdit) body+=`
+    <div class="field"><label>Union type</label><select class="finput" id="u_type">
+      ${['marriage','partnership','divorced','separated'].map(t=>`<option value="${t}"${u.type===t?' selected':''}>${UNION_WORD[t]}</option>`).join('')}</select></div>
+    <div class="row2">
+      <div class="field"><label>Together since</label><input class="finput" id="u_since" value="${esc(u.since||'')}" placeholder="1972"></div>
+      <div class="field"><label>Until</label><input class="finput" id="u_until" value="${esc(u.until||'')}" placeholder="—"></div>
+    </div>
+    <p class="hint">“Divorced” and “Separated” keep the union in the tree — the children still descend from it — but draw it as ended.</p>`;
+  else body+=`<div class="field"><label>Recorded as</label><p>${esc(UNION_WORD[u.type]||'Union')}${unionYears(u)?' · '+esc(unionYears(u)):''}</p></div>`;
+  if(kids.length) body+=`<div class="field"><label>Children of this union</label><div class="rel-list">
+    ${kids.map(k=>relRow(k,k.childType?CHILD_TYPE_WORD[k.childType]:'')).join('')}</div></div>`;
+  if(canEdit && isAdminHere()) body+=`<button class="act danger" style="width:100%;margin-top:4px" onclick="deleteUnion('${htmlId(uid)}')">Remove this union…</button>
+    <p class="hint" style="margin-top:8px">Removing a union never deletes people${kids.length?'; its children lose only the parent link':''}.</p>`;
+  $('#panelBody').innerHTML=body;
+  $('#panelFoot').style.display=canEdit?'flex':'none';
+  if(canEdit) $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="${a?`openPerson('${htmlId(a.id)}')`:'closePanel()'}">Back</button><button class="btn-fill" onclick="saveUnion('${htmlId(uid)}')">Save union</button>`;
+  $('#panel').classList.add('open');
+}
+async function saveUnion(uid){
+  const u=U(uid); if(!u) return;
+  const type=$('#u_type').value, since=$('#u_since').value.trim()||null, until=$('#u_until').value.trim()||null;
+  if(since&&until&&Number(yearOf(since))&&Number(yearOf(until))&&Number(yearOf(until))<Number(yearOf(since))){ toast('The union can’t end before it began.'); return; }
+  if(REMOTE){
+    try{ await api('/unions/'+encodeURIComponent(uid),{method:'PATCH',body:{type,since,until}});
+      await loadFamily(state.familyId); render(); openUnion(uid); toast('Union updated.'); }
+    catch(e){ toast(esc(e.message)); }
+    return;
+  }
+  u.type=type; u.since=since; u.until=until;
+  saveDB(); render(); openUnion(uid); toast('Union updated.');
+}
+async function deleteUnion(uid){
+  const u=U(uid); if(!u) return;
+  const kids=Object.values(DB.persons).filter(x=>x.childOf===uid);
+  const msg=kids.length?`Remove this union? Its ${kids.length} child${kids.length>1?'ren':''} keep their records but lose this parent link.`:'Remove this union? Both people stay in the record.';
+  if(settings.confirmDanger && !confirm(msg)) return;
+  if(REMOTE){
+    try{ await api('/unions/'+encodeURIComponent(uid)+(kids.length?'?force=1':''),{method:'DELETE'});
+      await loadFamily(state.familyId); closePanel(); render(); toast('Union removed.'); }
+    catch(e){ toast(esc(e.message)); }
+    return;
+  }
+  kids.forEach(k=>{ k.childOf=null; k.childType=null; });
+  delete DB.unions[uid];
+  saveDB(); closePanel(); render(); toast('Union removed.');
+}
+
 /* ---- delete (admin) — detaches unions and re-roots the family if needed ---- */
 async function deletePerson(id){
   const p=P(id); if(!p || !isAdminHere()) return;
@@ -1892,17 +2219,23 @@ function exportGEDCOM(){
   ps.forEach(p=>{
     const parts=String(p.name).trim().split(/\s+/); const sur=parts.length>1?parts.pop():'';
     L.push(`0 ${iref[p.id]} INDI`, `1 NAME ${parts.join(' ')} /${sur}/`);
+    if(p.sex==='F'||p.sex==='M') L.push(`1 SEX ${p.sex}`);
     if(p.born!=null || p.place){ L.push('1 BIRT'); if(p.born!=null) L.push(`2 DATE ${p.born}`); if(p.place) L.push(`2 PLAC ${p.place}`); }
     if(p.died!=null){ L.push('1 DEAT', `2 DATE ${p.died}`); }
     if(p.occupation) L.push(`1 OCCU ${p.occupation}`);
     if(p.bio) L.push(`1 NOTE ${String(p.bio).replace(/\r?\n/g,' ')}`);
-    if(p.childOf && fref[p.childOf]) L.push(`1 FAMC ${fref[p.childOf]}`);
+    if(p.childOf && fref[p.childOf]){ L.push(`1 FAMC ${fref[p.childOf]}`); if(p.childType) L.push(`2 PEDI ${p.childType}`); }
     unionsOf(p.id).forEach(u=>{ if(fref[u.id]) L.push(`1 FAMS ${fref[u.id]}`); });
   });
   unions.forEach(u=>{
     L.push(`0 ${fref[u.id]} FAM`);
-    if(u.a&&iref[u.a]) L.push(`1 HUSB ${iref[u.a]}`);
-    if(u.b&&iref[u.b]) L.push(`1 WIFE ${iref[u.b]}`);
+    // honour recorded sex when assigning HUSB/WIFE; default to a=HUSB
+    let [h,w]=[u.a,u.b];
+    if((h&&P(h)?.sex==='F') || (w&&P(w)?.sex==='M')) [h,w]=[w,h];
+    if(h&&iref[h]) L.push(`1 HUSB ${iref[h]}`);
+    if(w&&iref[w]) L.push(`1 WIFE ${iref[w]}`);
+    if(u.since){ L.push('1 MARR', `2 DATE ${u.since}`); }
+    if(u.type==='divorced'){ L.push('1 DIV'); if(u.until) L.push(`2 DATE ${u.until}`); }
     Object.values(DB.persons).forEach(c=>{ if(c.childOf===u.id && iref[c.id]) L.push(`1 CHIL ${iref[c.id]}`); });
   });
   L.push('0 TRLR');
@@ -1954,7 +2287,7 @@ function neighborEdges(pid){
   parentsOf(pid).forEach(p=>out.push({id:p.id, rel:'parent'}));
   childrenOf(pid).filter(k=>k.status==='approved').forEach(k=>out.push({id:k.id, rel:'child'}));
   unionsOf(pid).filter(u=>u.status==='approved').forEach(u=>{ const o=partnerIn(pid,u);
-    if(o && P(o) && P(o).status==='approved') out.push({id:o, rel:u.type==='partnership'?'partner':'spouse'}); });
+    if(o && P(o) && P(o).status==='approved') out.push({id:o, rel:u.type==='partnership'?'partner':(u.type==='divorced'||u.type==='separated')?'ex-spouse':'spouse'}); });
   return out;
 }
 function findPath(a,b){
@@ -1975,24 +2308,33 @@ function ancestorDepths(pid){
   while(q.length){ const [id,d]=q.shift(); if(map[id]!==undefined) continue; map[id]=d; parentsOf(id).forEach(p=>q.push([p.id,d+1])); }
   return map;
 }
-const ancWord = d=> d===1?'parent' : d===2?'grandparent' : 'great-'.repeat(d-2)+'grandparent';
+const ancWord = (d,sex)=>{ const base = d===1?gword(sex,'mother','father','parent'):gword(sex,'grandmother','grandfather','grandparent');
+  return d<=2 ? base : 'great-'.repeat(d-2)+base; };
 const ordinal = n=>{ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
 function kinshipLabel(a,b,path){
   const A=esc(P(a).name.split(' ')[0]), B=esc(P(b).name.split(' ')[0]);
-  if(path.length===2 && (path[1].rel==='spouse'||path[1].rel==='partner'))
-    return `${A} and ${B} are ${path[1].rel==='partner'?'partners':'spouses'}.`;
+  const sa=P(a).sex, sb=P(b).sex;
+  if(path.length===2 && ['spouse','partner','ex-spouse'].includes(path[1].rel))
+    return `${A} and ${B} are ${({spouse:'spouses', partner:'partners', 'ex-spouse':'formerly married'})[path[1].rel]}.`;
   const da=ancestorDepths(a), db=ancestorDepths(b);
-  if(db[a]!==undefined) return `${A} is ${B}’s ${ancWord(db[a])}.`;
-  if(da[b]!==undefined) return `${B} is ${A}’s ${ancWord(da[b])}.`;
+  if(db[a]!==undefined) return `${A} is ${B}’s ${ancWord(db[a],sa)}.`;
+  if(da[b]!==undefined) return `${B} is ${A}’s ${ancWord(da[b],sb)}.`;
   let best=null;
   for(const id in da) if(db[id]!==undefined){ const m=da[id], n=db[id]; if(!best || m+n<best.m+best.n) best={m,n}; }
   if(best){
     const k=Math.min(best.m,best.n), r=Math.abs(best.m-best.n);
-    if(k===1&&r===0) return `${A} and ${B} are siblings.`;
-    if(k===1) return `${A} and ${B} are ${r>1?'great-'.repeat(r-1):''}aunt/uncle and niece/nephew.`;
+    if(k===1&&r===0){
+      const pair = sa==='F'&&sb==='F' ? 'sisters' : sa==='M'&&sb==='M' ? 'brothers' : 'siblings';
+      return `${A} and ${B} are ${pair}.`;
+    }
+    if(k===1){
+      const elderFirst = best.m<best.n; // the one nearer the common ancestor is the aunt/uncle
+      const [eN,eS,yN] = elderFirst ? [A,sa,B] : [B,sb,A];
+      return `${eN} is ${yN}’s ${'great-'.repeat(r-1)}${gword(eS,'aunt','uncle','aunt or uncle')}.`;
+    }
     return `${A} and ${B} are ${ordinal(k-1)} cousins${r?`, ${r} time${r>1?'s':''} removed`:''}.`;
   }
-  return path.some(s=>s.rel==='spouse'||s.rel==='partner')
+  return path.some(s=>['spouse','partner','ex-spouse'].includes(s.rel))
     ? `${A} and ${B} are connected by marriage.` : `${A} and ${B} are connected in the record.`;
 }
 function personOptions(sel){
@@ -2018,8 +2360,12 @@ function traceRelation(){
   if(a===b){ out.innerHTML='<div class="empty">That is the same person twice.</div>'; return; }
   const path=findPath(a,b);
   if(!path){ out.innerHTML='<div class="empty">No recorded connection — yet.<br>Add the missing kin and trace again.</div>'; return; }
-  const stepWord={parent:'their parent', child:'their child', spouse:'their spouse', partner:'their partner'};
   const rows=path.map((s,i)=>{ const p=P(s.id);
+    const stepWord={parent:gword(p.sex,'their mother','their father','their parent'),
+      child:gword(p.sex,'their daughter','their son','their child'),
+      spouse:gword(p.sex,'their wife','their husband','their spouse'),
+      'ex-spouse':gword(p.sex,'their ex-wife','their ex-husband','their former spouse'),
+      partner:'their partner'};
     const pre=i?`<div class="pathstep">${stepWord[s.rel]||esc(s.rel)}</div>`:'';
     return pre+relRow(p, i===0?'From': i===path.length-1?'To':''); }).join('');
   out.innerHTML=`<div class="field"><label>Relationship</label><p>${kinshipLabel(a,b,path)}</p></div>
@@ -2096,14 +2442,23 @@ async function jumpTo(fid,pid){
   if(fid!==state.familyId){ await switchFamily(fid); }
   if(P(pid)) openPerson(pid); else toast('Opening…');
 }
-document.addEventListener('click',e=>{ const b=$('#searchResults'); if(b&&!e.target.closest('.search')&&!e.target.closest('#searchResults')) b.classList.remove('show'); });
+document.addEventListener('click',e=>{ const b=$('#searchResults'); if(b&&!e.target.closest('.search')&&!e.target.closest('#searchResults')) b.classList.remove('show');
+  if(_ctxEl && !e.target.closest('.ctxmenu')) closeCtx(); });
+svg.on('contextmenu',e=>{ if(!hasAccess(state.familyId)){ e.preventDefault(); return; } canvasCtx(e); });
+document.addEventListener('contextmenu',e=>{ if(_ctxEl && !e.target.closest('.ctxmenu')) closeCtx(); });
+document.addEventListener('scroll',()=>closeCtx(),true);
+window.addEventListener('blur',()=>closeCtx());
 $('#viewToggle').querySelectorAll('button').forEach(b=>b.onclick=()=>{ state.view=b.dataset.view; render(); });
 $('#zoomers').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.z==='png') exportPNG(); else if(b.dataset.z==='fit') fitView(); else svg.transition().duration(250).call(zoom.scaleBy,b.dataset.z==='in'?1.3:1/1.3); });
 svg.on('click',()=>closePanel());
 document.onkeydown=e=>{
   const typing=/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||'');
-  if(e.key==='Escape'){ closePanel(); closeGate(); if($('#welcome').classList.contains('show')) dismissWelcome(); if(typing) document.activeElement.blur(); }
+  if(e.key==='Escape'){ if(_ctxEl){ closeCtx(); return; } closePanel(); closeGate(); if($('#welcome').classList.contains('show')) dismissWelcome(); if(typing) document.activeElement.blur(); }
   else if(e.key==='/' && !typing){ e.preventDefault(); $('#search').focus(); }
+  else if(!typing && !e.ctrlKey && !e.metaKey && !e.altKey){
+    if(e.key>='1' && e.key<='4'){ state.view=['desc','anc','time','records'][Number(e.key)-1]; render(); }
+    else if(e.key==='f' && state.view!=='records') fitView();
+  }
 };
 window.onresize=()=>{ if(state.view!=='records') fitView(); };
 
