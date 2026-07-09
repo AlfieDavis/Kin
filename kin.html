@@ -211,6 +211,42 @@ select.finput{appearance:none; background-image:url("data:image/svg+xml,%3Csvg x
 .modal p.sub{text-align:center; color:var(--muted); font-size:13px; margin:0 0 20px; line-height:1.5}
 .err{color:var(--rust); font-size:12.5px; text-align:center; margin-top:10px; min-height:16px}
 
+/* ---------- gallery, stories, lightbox ---------- */
+.pgal{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:8px}
+.gthumb{aspect-ratio:1; border-radius:9px; overflow:hidden; border:1px solid var(--line); background:var(--ink-3); padding:0; transition:.15s}
+.gthumb img{width:100%; height:100%; object-fit:cover; display:block}
+.gthumb:hover{border-color:var(--gold-soft); transform:translateY(-1px)}
+.story{background:var(--ink-3); border:1px solid var(--line); border-radius:11px; padding:12px 14px; margin-bottom:9px}
+.story .sthead{display:flex; justify-content:space-between; gap:10px; align-items:baseline; margin-bottom:6px}
+.story .sthead b{font-family:'Fraunces',serif; font-weight:500; font-size:15px}
+.story .sthead span{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); white-space:nowrap}
+.story .stbody{font-size:13px; line-height:1.62; color:var(--bone-dim); white-space:pre-wrap; max-height:106px; overflow:hidden}
+.story.open .stbody{max-height:none}
+.story .stmore{margin-top:7px; font-size:11.5px; color:var(--gold); background:none; padding:0}
+.story .strow{display:flex; gap:8px; margin-top:9px}
+.story .strow button{font-size:11.5px; color:var(--muted); padding:4px 9px; border-radius:6px; background:var(--ink-2); border:1px solid var(--line)}
+.story .strow button:hover{color:var(--bone); border-color:var(--gold-soft)}
+.lightbox{position:fixed; inset:0; z-index:85; background:rgba(8,9,11,.93); backdrop-filter:blur(10px); display:none; flex-direction:column; align-items:center; justify-content:center; padding:28px}
+.lightbox.show{display:flex}
+.lightbox img{max-width:min(92vw,1000px); max-height:72vh; border-radius:12px; box-shadow:var(--shadow)}
+.lb-cap{margin-top:14px; color:#ECE4D3; font-size:14px; text-align:center; max-width:620px; line-height:1.5}
+.lb-sub{margin-top:5px; color:#8A8474; font-family:'JetBrains Mono',monospace; font-size:11px; cursor:pointer}
+.lb-sub:hover{color:#C9A863}
+.lb-nav{position:fixed; top:50%; transform:translateY(-50%); width:44px; height:44px; border-radius:12px; background:rgba(27,30,37,.9); border:1px solid #2C303A; color:#ECE4D3; font-size:20px}
+.lb-nav:hover{border-color:#8f7c50}
+.lb-nav:disabled{opacity:.25; cursor:default}
+.lb-close{position:fixed; top:18px; right:18px; width:40px; height:40px; border-radius:11px; background:rgba(27,30,37,.9); border:1px solid #2C303A; color:#ECE4D3; font-size:17px}
+.lb-close:hover{border-color:#8f7c50}
+.lb-tools{margin-top:12px; display:flex; gap:8px}
+.lb-tools button{font-size:11.5px; color:#8A8474; padding:5px 11px; border-radius:7px; background:rgba(27,30,37,.9); border:1px solid #2C303A}
+.lb-tools button:hover{color:#ECE4D3; border-color:#8f7c50}
+.pcard{background:var(--ink-2); border:1px solid var(--line); border-radius:14px; overflow:hidden; text-align:left; padding:0; transition:.18s}
+.pcard:hover{border-color:var(--gold-soft); transform:translateY(-2px); box-shadow:var(--shadow)}
+.pcard img{width:100%; aspect-ratio:1.25; object-fit:cover; display:block}
+.pcard .pmeta{padding:10px 13px 12px}
+.pcard .pmeta b{font-family:'Fraunces',serif; font-weight:500; font-size:14.5px; display:block}
+.pcard .pmeta span{font-size:11.5px; color:var(--muted); display:block; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
 /* ---------- context menu (right-click) ---------- */
 .ctxmenu{position:fixed; z-index:80; min-width:214px; padding:6px; background:linear-gradient(180deg,var(--ink-2),var(--ink));
   border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); animation:pop .14s ease-out}
@@ -331,9 +367,11 @@ html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 
       <button data-view="desc" class="active">Descendants</button>
       <button data-view="anc">Ancestors</button>
       <button data-view="time">Timeline</button>
+      <button data-view="photos">Photos</button>
       <button data-view="records">Records</button>
     </div>
     <div class="zoomers" id="zoomers"><button data-z="out" aria-label="Zoom out">−</button><button data-z="fit" title="Fit" aria-label="Fit view">⊙</button><button data-z="in" aria-label="Zoom in">+</button><button data-z="png" title="Download chart as image" aria-label="Download chart as image">⤓</button></div>
+    <div class="viewtoggle" id="tlTools" style="display:none"></div>
     <button class="ghostbtn" id="relateBtn" title="Trace how two people are related">⇄ How related?</button>
   </div>
   <div class="hintchip" id="hintchip"></div>
@@ -344,6 +382,15 @@ html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 
 <aside class="panel" id="panel" role="complementary"><div class="panel-head" id="panelHead"></div><div class="panel-body" id="panelBody"></div><div class="panel-foot" id="panelFoot" style="display:none"></div></aside>
 <div class="scrim" id="scrim"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer">
+  <button class="lb-close" onclick="closeLightbox()" aria-label="Close">✕</button>
+  <button class="lb-nav" id="lbPrev" style="left:18px" onclick="stepLightbox(-1)" aria-label="Previous">‹</button>
+  <button class="lb-nav" id="lbNext" style="right:18px" onclick="stepLightbox(1)" aria-label="Next">›</button>
+  <img id="lbImg" src="" alt="">
+  <div class="lb-cap" id="lbCap"></div>
+  <div class="lb-sub" id="lbSub"></div>
+  <div class="lb-tools" id="lbTools"></div>
+</div>
 <input type="file" id="importFile" accept="application/json,.json" style="display:none">
 <input type="file" id="photoFile" accept="image/*" style="display:none">
 
@@ -457,6 +504,11 @@ union('hu8','h_sophie','h_amara',{type:'partnership'});
  ['h_sophie','Doctor','Cardiff'],['h_amara','Epidemiologist','Cardiff'],
  ['h_alan','Percussionist','Manchester'],['h_june','Music teacher','Leeds'],
 ].forEach(([id,occ,place])=>{ const p=DB.persons[id]; if(p){ p.occupation=occ; p.place=place; } });
+/* a couple of demo stories, so the Stories section has something to show */
+DB.persons['h_edmund'].stories=[{id:'st_demo1', title:'The workshop clock', by:'Family record', createdAt:'2026-07-09',
+  body:'When Edmund died in 1978, nobody wound the workshop clock, and it stopped nine days later at ten past four.\n\nRoger found it like that when he took the workshop over, and he has never reset it. Every other clock in the room keeps perfect time — that one keeps Edmund\'s.'}];
+DB.persons['h_vera'].stories=[{id:'st_demo2', title:'Two orchestras', by:'Family record', createdAt:'2026-07-09',
+  body:'Vera used to say she\'d had two lives: one in the string section and one in the percussion pit. The first gave her Clive and Heather; the second gave her June and, she claimed, her hearing loss.\n\nShe kept both wedding programmes in the same envelope, which tells you most of what you need to know about her.'}];
 /* recorded sex, so kinship reads "grandmother", not "grandparent" */
 'h_josiah h_wilfred h_edmund h_arthur h_gordon h_alan h_thomas h_clive h_daniel h_roger h_ken h_ravi h_otis'.split(' ')
   .forEach(id=>{ if(DB.persons[id]) DB.persons[id].sex='M'; });
@@ -504,7 +556,7 @@ function loadDB(){
 }
 loadDB();
 
-const state = { familyId:'harrow', view:'desc', descRoot:null, ancFocus:null, admin:false, query:'', dirTab:'browse', adminTab:'pending', recSort:'name', recFilter:'all' };
+const state = { familyId:'harrow', view:'desc', descRoot:null, ancFocus:null, admin:false, query:'', dirTab:'browse', adminTab:'pending', recSort:'name', recFilter:'all', tlSort:'born' };
 if(!DB.families[state.familyId]) state.familyId=Object.keys(DB.families)[0];
 const unlocked = new Set();
 try{ JSON.parse(sessionStorage.getItem('kin.unlocked')||'[]').forEach(id=>{ if(DB.families[id]) unlocked.add(id); }); }catch{}
@@ -523,7 +575,7 @@ let PENDINGDATA=null, FAMREQS=[], MEMBERS=null, AUDITL=null;
 
 /* ---- deep links: #/familyId/view(/personId) ---- */
 function parseHash(){
-  const m=location.hash.match(/^#\/([a-zA-Z0-9-]+)\/(desc|anc|records|time)(?:\/([A-Za-z0-9_-]+))?$/);
+  const m=location.hash.match(/^#\/([a-zA-Z0-9-]+)\/(desc|anc|records|time|photos)(?:\/([A-Za-z0-9_-]+))?$/);
   return m?{fid:m[1], view:m[2], pid:m[3]||null}:null;
 }
 function reflectHash(){ try{ history.replaceState(null,'',location.pathname+location.search+`#/${state.familyId}/${state.view}`); }catch{} }
@@ -1181,7 +1233,10 @@ function renderTimeline(){
   g.selectAll('*').remove(); addDefs();
   const nowY=new Date().getFullYear();
   const all=approvedOf(state.familyId).map(p=>({p, b:Number(yearOf(p.born)), d:isLiving(p)?nowY:Number(yearOf(p.died))}));
-  const rows=all.filter(r=>r.b>0 && r.d>=r.b && r.b<=nowY).sort((a,b)=>a.b-b.b || a.p.name.localeCompare(b.p.name));
+  let rows=all.filter(r=>r.b>0 && r.d>=r.b && r.b<=nowY);
+  if(state.tlSort==='name') rows.sort((a,b)=>a.p.name.localeCompare(b.p.name));
+  else if(state.tlSort==='span') rows.sort((a,b)=>(b.d-b.b)-(a.d-a.b) || a.b-b.b);
+  else rows.sort((a,b)=>a.b-b.b || a.p.name.localeCompare(b.p.name));
   const undated=all.filter(r=>!(r.b>0 && r.d>=r.b && r.b<=nowY));
   window._tlUndated=undated;  // consumed by the undated strip below
   if(!rows.length){ $('#hintchip').textContent='No dated kin yet — add birth years and they appear here.'; }
@@ -1189,6 +1244,10 @@ function renderTimeline(){
   const PX=7, rowH=32, H=rows.length*rowH;
   const X=yr=>(yr-y0)*PX;
   const layer=g.append('g');
+  // alternating decades, so the eye can follow a bar across the chart
+  for(let yr=y0; yr<y1; yr+=10) if((yr/10)%2===0)
+    layer.append('rect').attr('x',X(yr)).attr('y',-30).attr('width',10*PX).attr('height',H+30)
+      .attr('fill','var(--bone)').attr('opacity',.022);
   for(let yr=y0; yr<=y1; yr+=10){
     layer.append('line').attr('x1',X(yr)).attr('x2',X(yr)).attr('y1',-30).attr('y2',H)
       .attr('stroke','var(--line)').attr('stroke-width',yr%50?0.7:1.4);
@@ -1199,14 +1258,28 @@ function renderTimeline(){
     .attr('stroke','var(--verd)').attr('stroke-opacity',.45).attr('stroke-dasharray','3 4');
   rows.forEach((r,i)=>{
     const y=i*rowH, w=Math.max(10,X(r.d)-X(r.b));
+    const age=r.d-r.b;
     const gg=layer.append('g').attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(r.p.id);})
       .on('contextmenu',(e)=>personCtx(e,r.p.id));
+    gg.append('title').text(`${r.p.name} · ${dates(r.p)}${r.p.occupation?' · '+r.p.occupation:''}${r.p.place?' · '+r.p.place:''}`);
     gg.append('rect').attr('x',X(r.b)).attr('y',y).attr('width',w).attr('height',20).attr('rx',10)
       .attr('fill','url(#plateGrad)').attr('stroke',(settings.livingMarker&&isLiving(r.p))?'var(--verd)':'var(--gold-soft)').attr('stroke-width',1).attr('filter','url(#plateShadow)');
     gg.append('text').attr('x',X(r.b)-9).attr('y',y+14).attr('text-anchor','end').attr('fill','var(--bone)')
       .style('font','500 12px Fraunces,serif').text(trunc(r.p.name,26));
     if(settings.showDates && w>60) gg.append('text').attr('x',X(r.b)+9).attr('y',y+13.5).attr('fill','var(--muted)')
       .style('font','400 9.5px "JetBrains Mono",monospace').text(isLiving(r.p)?r.b+' –':r.b+'–'+r.d);
+    if(age>0 && w>40) layer.append('text').attr('x',X(r.d)+8).attr('y',y+14).attr('fill','var(--muted)')
+      .style('font','400 9.5px "JetBrains Mono",monospace').text(isLiving(r.p)?age:age+' yrs');
+    // marriage markers: a diamond on the bar at each union's starting year
+    partnersOf(r.p.id).forEach(({u,p:pp})=>{
+      const my=Number(yearOf(u.since)); if(!my || my<r.b || my>r.d) return;
+      const mg=layer.append('g').attr('class','node-g')
+        .on('click',(e)=>{e.stopPropagation(); openPanelBare(); openUnion(u.id);});
+      mg.append('title').text(`⚭ ${UNION_WORD[u.type]||'Union'}${pp?' — '+pp.name:''} · ${my}`);
+      mg.append('rect').attr('x',X(my)-3.4).attr('y',y+10-3.4).attr('width',6.8).attr('height',6.8)
+        .attr('transform',`rotate(45 ${X(my)} ${y+10})`)
+        .attr('fill','var(--gold)').attr('stroke','var(--ink)').attr('stroke-width',1);
+    });
   });
   // nobody vanishes: people without a usable birth year get a labelled band
   const und=window._tlUndated||[];
@@ -1328,7 +1401,9 @@ function familyStats(fid){
   const lifespans=ps.filter(p=>!isLiving(p)).map(p=>Number(yearOf(p.died))-Number(yearOf(p.born))).filter(n=>n>0&&n<130);
   const avg=lifespans.length?Math.round(lifespans.reduce((a,b)=>a+b,0)/lifespans.length):null;
   const uset=new Set(); ps.forEach(p=>unionsOf(p.id).forEach(u=>{ if(u.status==='approved') uset.add(u.id); }));
-  return {total:ps.length, living, span, avg, unions:uset.size};
+  const photos=ps.reduce((n,p)=>n+(REMOTE?(p.galleryCount||0):(p.gallery||[]).length),0);
+  const stories=ps.reduce((n,p)=>n+(REMOTE?(p.storiesCount||0):(p.stories||[]).length),0);
+  return {total:ps.length, living, span, avg, unions:uset.size, photos, stories};
 }
 function renderRecords(){
   $('#recTitle').textContent=fam().name;
@@ -1347,7 +1422,8 @@ function renderRecords(){
   $('#recCount').textContent=`${list.length} of ${approvedOf(state.familyId).length} kin`;
   const st=familyStats(state.familyId);
   $('#recStats').innerHTML=[`<b>${st.total}</b> kin`,`<b>${st.living}</b> living`,`<b>${st.unions}</b> unions`,
-    st.span?`born <b>${esc(st.span)}</b>`:null, st.avg?`avg lifespan <b>${st.avg}</b>`:null].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
+    st.span?`born <b>${esc(st.span)}</b>`:null, st.avg?`avg lifespan <b>${st.avg}</b>`:null,
+    st.photos?`<b>${st.photos}</b> photos`:null, st.stories?`<b>${st.stories}</b> stories`:null].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
   renderHealth();
   $('#recGrid').innerHTML = list.map(p=>{
     const partner=primaryPartner(p.id);
@@ -1378,15 +1454,22 @@ function render(){
   if(state.view==='desc'){ const r=P(state.descRoot||descRootOf(f.id))||approvedOf(f.id)[0]; crumb=state.descRoot?'Descendants of':'Family tree —'; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span><span>${esc(f.side)}</span>`; $('#famTitle').textContent=r?r.name:f.name; }
   else if(state.view==='anc'){ const r=P(state.ancFocus||f.pivotId)||approvedOf(f.id)[0]; crumb='Ancestors of'; $('#famTitle').textContent=r?r.name:f.name; meta=`<span>${esc(f.name)} line</span><span>generations climb rightward</span>`; }
   else if(state.view==='time'){ const st=familyStats(f.id); crumb='Timeline of'; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span>${st.span?`<span>born ${esc(st.span)}</span>`:''}`; }
+  else if(state.view==='photos'){ crumb='Photographs —'; $('#famTitle').textContent=f.name; meta=`<span>the family gallery</span>`; }
   else { crumb=f.name; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin recorded</span>`; }
   $('#crumb').textContent=crumb;
   $('#famMeta').innerHTML=meta;
 
-  const rec=state.view==='records';
+  const rec=state.view==='records'||state.view==='photos';
   $('#records').classList.toggle('show',rec);
   $('#canvas').style.display=rec?'none':'block';
   $('#zoomers').style.visibility=rec?'hidden':'visible';
   $('#hintchip').style.display=rec?'none':'block';
+  const tt=$('#tlTools');
+  if(state.view==='time'){
+    tt.style.display='flex';
+    const chip=(v,l)=>`<button class="${state.tlSort===v?'active':''}" onclick="state.tlSort='${v}';render()">${l}</button>`;
+    tt.innerHTML=chip('born','By birth')+chip('name','A–Z')+chip('span','Longest life');
+  } else tt.style.display='none';
   $('#hintchip').innerHTML = ({
     anc:'Ancestor chart · the focus person sits on the left, each column climbs one generation. Dashed plates are missing parents — click to add. Right-click for quick actions.',
     time:'Timeline · every dated life as a bar, oldest first. The dashed green line is today. Right-click a bar for quick actions.',
@@ -1407,7 +1490,7 @@ function render(){
 
   syncView();
   updateAdminSeal();
-  if(state.view==='desc') renderDesc(); else if(state.view==='anc') renderAnc(); else if(state.view==='time') renderTimeline(); else renderRecords();
+  if(state.view==='desc') renderDesc(); else if(state.view==='anc') renderAnc(); else if(state.view==='time') renderTimeline(); else if(state.view==='photos') renderPhotos(); else renderRecords();
   reflectHash();
 }
 function renderLocked(f){
@@ -1605,9 +1688,18 @@ function openPerson(id,opts={}){
     if(us.length) body+=`<div class="field"><label>Unions</label>${us.map(({u,p:pp})=>
       `<button class="act" style="width:100%;margin-bottom:7px" onclick="openUnion('${htmlId(u.id)}')">⚭ ${esc(UNION_WORD[u.type]||'Union')}${pp?' with '+esc(pp.name.split(' ')[0]):''}${unionYears(u)?' · '+esc(unionYears(u)):''} — edit</button>`).join('')}</div>`;
   }
+  const gcount = REMOTE ? (p.galleryCount||0) : (p.gallery||[]).length;
+  const scount = REMOTE ? (p.storiesCount||0) : (p.stories||[]).length;
+  body+=`<div class="field"><label>Gallery${gcount?` · ${gcount}`:''}</label>
+    <div class="pgal" id="pv_gallery"></div>
+    ${canEdit?`<button class="act" style="width:100%" onclick="addGalleryPhoto('${htmlId(id)}')">＋ Add photo</button>`:''}</div>`;
+  body+=`<div class="field"><label>Stories${scount?` · ${scount}`:''}</label>
+    <div id="pv_stories"></div>
+    ${canEdit?`<button class="act" style="width:100%" onclick="openStoryForm('${htmlId(id)}')">＋ Write a story</button>`:''}</div>`;
   $('#panelBody').innerHTML=body;
   $('#panelFoot').style.display='none';
   $('#panel').classList.add('open');
+  loadPersonMedia(id);
 }
 const plus=()=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>`;
 function relRow(p,role){ return `<button class="rel" onclick="openPerson('${htmlId(p.id)}')"><span class="rav" style="overflow:hidden">${avFor(p)}</span><span class="rn">${esc(p.name)}${p.familyId!==state.familyId?' · '+esc(DB.families[p.familyId].name):''}</span><span class="rr">${esc(role)}</span></button>`; }
@@ -1803,7 +1895,7 @@ async function submitKin(){
 function openEdit(id){
   const p=P(id);
   const canPhoto = REMOTE ? canEditHere() : state.admin;
-  state.photoTarget=id;
+  state.photoTarget=id; state.photoMode='portrait';
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Edit record</h2><div class="pv-dates" style="color:var(--muted)">${esc(p.name)}</div>`;
   $('#panelBody').innerHTML=`
     ${canPhoto?`<div class="field"><label>Photo</label>
@@ -1881,6 +1973,174 @@ async function removePhoto(id){
   }catch(e){ toast(esc(e.message)); }
 }
 /* ================================================================
+   GALLERY — any number of photos per person, plus a family Photos view
+   ================================================================ */
+let _mediaCache={pid:null, photos:[], stories:[]};
+const FAMGAL={};   // familyId -> family-wide gallery list (remote cache)
+const gsrc=(pid,ph)=> ph.dataUrl ? ph.dataUrl : `/api/kin/gallery/${htmlId(ph.id)}`;
+async function loadPersonMedia(id){
+  const gbox=$('#pv_gallery'), sbox=$('#pv_stories');
+  if(!gbox && !sbox) return;
+  let photos=[], stories=[];
+  if(REMOTE){
+    try{ photos=(await api('/persons/'+htmlId(id)+'/gallery')).photos||[]; }catch{}
+    try{ stories=(await api('/persons/'+htmlId(id)+'/stories')).stories||[]; }catch{}
+  } else {
+    const p=P(id); if(!p) return;
+    photos=(p.gallery||[]).map(x=>({id:x.id, dataUrl:x.dataUrl, caption:x.caption}));
+    stories=(p.stories||[]).map(s=>({...s}));
+  }
+  _mediaCache={pid:id, photos, stories};
+  if(state.lastPerson!==id) return; // panel moved on while we fetched
+  const canEdit = REMOTE ? canEditHere() : state.admin;
+  if(gbox) gbox.innerHTML = photos.length
+    ? photos.map((ph,i)=>`<button class="gthumb" onclick="openPersonLightbox('${htmlId(id)}',${i})"><img src="${esc(gsrc(id,ph))}" loading="lazy" alt="${esc(ph.caption||'')}"></button>`).join('')
+    : `<div class="empty" style="padding:8px 0 4px">No photos yet${canEdit?' — add the first':''}.</div>`;
+  if(sbox) sbox.innerHTML = stories.length
+    ? stories.map(s=>{
+        const manage = REMOTE ? (isAdminHere() || (s.mine && canEdit)) : state.admin;
+        const long=(s.body||'').length>300 || (s.body||'').split('\n').length>5;
+        return `<div class="story" id="story_${htmlId(s.id)}">
+          <div class="sthead"><b>${esc(s.title)}</b><span>${esc([s.by, String(s.createdAt||'').slice(0,10)].filter(Boolean).join(' · '))}</span></div>
+          <div class="stbody">${esc(s.body)}</div>
+          ${long?`<button class="stmore" onclick="const st=document.getElementById('story_${htmlId(s.id)}'); st.classList.toggle('open'); this.textContent=st.classList.contains('open')?'Show less':'Read more'">Read more</button>`:''}
+          ${manage?`<div class="strow"><button onclick="openStoryForm('${htmlId(id)}','${htmlId(s.id)}')">Edit</button><button onclick="deleteStory('${htmlId(id)}','${htmlId(s.id)}')">Delete</button></div>`:''}
+        </div>`;
+      }).join('')
+    : `<div class="empty" style="padding:8px 0 4px">No stories yet${canEdit?' — write the first':''}.</div>`;
+}
+function addGalleryPhoto(id){ state.photoTarget=id; state.photoMode='gallery'; document.getElementById('photoFile').click(); }
+async function uploadGalleryPhoto(file){
+  const id=state.photoTarget; if(!id||!P(id)||!file) return;
+  try{
+    const dataUrl=await resizeToDataUrl(file,1024);
+    const caption=(prompt('Caption for this photo (optional):')||'').trim();
+    if(REMOTE){ await api('/persons/'+htmlId(id)+'/gallery',{method:'POST',body:{dataUrl, caption}}); delete FAMGAL[state.familyId]; }
+    else{
+      const p=P(id); p.gallery=p.gallery||[];
+      if(p.gallery.length>=12){ toast('Local demo keeps up to 12 photos per person.'); return; }
+      p.gallery.push({id:'g'+Date.now()+Math.random().toString(36).slice(2,6), dataUrl, caption}); saveDB();
+    }
+    toast('Photo added to the gallery.');
+    if(state.lastPerson===id && $('#pv_gallery')) loadPersonMedia(id);
+    if(state.view==='photos') render();
+  }catch(e){ toast(esc(e.message)); }
+}
+async function deleteGalleryPhoto(pid, photoId){
+  if(settings.confirmDanger && !confirm('Remove this photo from the gallery?')) return;
+  try{
+    if(REMOTE){ await api('/gallery/'+htmlId(photoId),{method:'DELETE'}); delete FAMGAL[state.familyId]; }
+    else{ const p=P(pid); p.gallery=(p.gallery||[]).filter(x=>x.id!==photoId); saveDB(); }
+    closeLightbox(); toast('Photo removed.');
+    if(state.lastPerson===pid && $('#pv_gallery')) loadPersonMedia(pid);
+    if(state.view==='photos') render();
+  }catch(e){ toast(esc(e.message)); }
+}
+async function editGalleryCaption(pid, photoId, current){
+  const caption=prompt('Caption:', current||''); if(caption==null) return;
+  try{
+    if(REMOTE){ await api('/gallery/'+htmlId(photoId),{method:'PATCH',body:{caption:caption.trim()}}); delete FAMGAL[state.familyId]; }
+    else{ const p=P(pid); const ph=(p.gallery||[]).find(x=>x.id===photoId); if(ph) ph.caption=caption.trim(); saveDB(); }
+    toast('Caption saved.');
+    const it=LB.items[LB.i]; if(it && it.photoId===photoId){ it.caption=caption.trim(); renderLightbox(); }
+    if(state.lastPerson===pid) loadPersonMedia(pid);
+  }catch(e){ toast(esc(e.message)); }
+}
+
+/* ---- lightbox ---- */
+let LB={items:[], i:0};
+function openPersonLightbox(pid, i){
+  const m=_mediaCache; if(m.pid!==pid) return;
+  openLightbox(m.photos.map(ph=>({src:gsrc(pid,ph), caption:ph.caption, photoId:ph.id, personId:pid, name:(P(pid)||{}).name||''})), i);
+}
+function openLightbox(items, i){ if(!items.length) return; LB={items, i:Math.max(0,Math.min(i,items.length-1))}; renderLightbox(); $('#lightbox').classList.add('show'); }
+function renderLightbox(){
+  const it=LB.items[LB.i]; if(!it) return;
+  $('#lbImg').src=it.src;
+  $('#lbCap').textContent=it.caption||'';
+  $('#lbSub').textContent=`${it.name||''} · ${LB.i+1} of ${LB.items.length}`;
+  $('#lbSub').onclick=()=>{ closeLightbox(); if(it.personId&&P(it.personId)) openPerson(it.personId); };
+  $('#lbPrev').disabled=LB.i===0; $('#lbNext').disabled=LB.i===LB.items.length-1;
+  const canEdit = REMOTE ? canEditHere() : state.admin;
+  $('#lbTools').innerHTML = canEdit&&it.photoId ? `
+    <button onclick="editGalleryCaption('${htmlId(it.personId)}','${htmlId(it.photoId)}',${JSON.stringify(it.caption||'').replace(/"/g,'&quot;')})">Edit caption</button>
+    <button onclick="deleteGalleryPhoto('${htmlId(it.personId)}','${htmlId(it.photoId)}')">Remove photo</button>`:'';
+}
+function stepLightbox(n){ const j=LB.i+n; if(j<0||j>=LB.items.length) return; LB.i=j; renderLightbox(); }
+function closeLightbox(){ $('#lightbox').classList.remove('show'); }
+
+/* ---- the family-wide Photos view ---- */
+async function renderPhotos(){
+  $('#recTitle').textContent=fam().name+' — photos';
+  $('#recTools').innerHTML=''; $('#recStats').innerHTML=''; $('#onThisDay').innerHTML='';
+  const hn=$('#healthNote'); hn.innerHTML=''; hn.style.display='none';
+  let items=[];
+  if(REMOTE){
+    if(!FAMGAL[state.familyId]){
+      $('#recGrid').innerHTML='<div class="empty">Loading photos…</div>';
+      try{ FAMGAL[state.familyId]=(await api('/families/'+encodeURIComponent(state.familyId)+'/gallery')).photos||[]; }
+      catch(e){ $('#recGrid').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; return; }
+    }
+    if(state.view!=='photos') return;
+    items=FAMGAL[state.familyId].map(r=>({src:'/api/kin/gallery/'+htmlId(r.id), caption:r.caption, photoId:r.id, personId:r.personId, name:r.personName}));
+  } else {
+    approvedOf(state.familyId).forEach(p=>(p.gallery||[]).forEach(ph=>items.push({src:ph.dataUrl, caption:ph.caption, photoId:ph.id, personId:p.id, name:p.name})));
+  }
+  window._photoItems=items;
+  $('#recCount').textContent=`${items.length} photo${items.length===1?'':'s'}`;
+  $('#recGrid').innerHTML = items.length
+    ? items.map((it,i)=>`<button class="pcard" onclick="openLightbox(window._photoItems,${i})">
+        <img src="${esc(it.src)}" loading="lazy" alt="${esc(it.caption||'')}">
+        <div class="pmeta"><b>${esc(it.name)}</b><span>${esc(it.caption||'')}</span></div></button>`).join('')
+    : '<div class="empty">No photos in this family yet — open a person and add some to their gallery.</div>';
+}
+
+/* ================================================================
+   STORIES — long-form memories attached to a person
+   ================================================================ */
+function openStoryForm(pid, sid){
+  const p=P(pid); if(!p) return;
+  const s=sid ? (_mediaCache.pid===pid ? _mediaCache.stories.find(x=>x.id===sid) : null) : null;
+  if(sid && !s){ toast('Open the person first.'); return; }
+  openPanelBare();
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>${s?'Edit story':'Write a story'}</h2><div class="pv-dates" style="color:var(--muted)">about ${esc(p.name)}</div>`;
+  $('#panelBody').innerHTML=`
+    <p class="hint">A memory, an anecdote, a bit of history — stories keep the person, not just the dates.</p>
+    <div class="field"><label>Title</label><input class="finput" id="st_title" value="${esc(s?.title||'')}" placeholder="The workshop clock"></div>
+    <div class="field"><label>Story</label><textarea class="finput" id="st_body" style="min-height:220px">${esc(s?.body||'')}</textarea></div>`;
+  $('#panelFoot').style.display='flex';
+  $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="openPerson('${htmlId(pid)}')">Cancel</button><button class="btn-fill" onclick="saveStory('${htmlId(pid)}','${htmlId(sid||'')}')">${s?'Save story':'Add story'}</button>`;
+  setTimeout(()=>$('#st_title')?.focus(),120);
+}
+async function saveStory(pid, sid){
+  const title=$('#st_title').value.trim(), bodyTxt=$('#st_body').value.trim();
+  if(!title){ toast('Give the story a title.'); $('#st_title').focus(); return; }
+  if(!bodyTxt){ toast('The story itself is missing.'); $('#st_body').focus(); return; }
+  try{
+    if(REMOTE){
+      if(sid) await api('/stories/'+htmlId(sid),{method:'PATCH',body:{title, body:bodyTxt}});
+      else await api('/persons/'+htmlId(pid)+'/stories',{method:'POST',body:{title, body:bodyTxt}});
+    } else {
+      const p=P(pid); p.stories=p.stories||[];
+      if(sid){ const s=p.stories.find(x=>x.id===sid); if(s){ s.title=title; s.body=bodyTxt; } }
+      else p.stories.push({id:'st'+Date.now(), title, body:bodyTxt, by:'Family record', createdAt:new Date().toISOString().slice(0,10)});
+      saveDB();
+    }
+    toast(sid?'Story updated.':`Story added to ${strong(P(pid).name)}.`);
+    openPerson(pid);
+  }catch(e){ toast(esc(e.message)); }
+}
+async function deleteStory(pid, sid){
+  if(settings.confirmDanger && !confirm('Delete this story? This cannot be undone.')) return;
+  try{
+    if(REMOTE) await api('/stories/'+htmlId(sid),{method:'DELETE'});
+    else{ const p=P(pid); p.stories=(p.stories||[]).filter(x=>x.id!==sid); saveDB(); }
+    toast('Story deleted.');
+    if(state.lastPerson===pid) loadPersonMedia(pid);
+  }catch(e){ toast(esc(e.message)); }
+}
+
+/* ================================================================
    UNION EDITOR — type, years, removal
    ================================================================ */
 function openUnion(uid){
@@ -1948,6 +2208,7 @@ async function deletePerson(id){
   if(REMOTE){
     try{
       await api('/persons/'+encodeURIComponent(id),{method:'DELETE'});
+      delete FAMGAL[state.familyId];
       await loadFamily(state.familyId);
       closePanel(); render(); toast(`${strong(p.name)} moved to Trash — restore anytime from the admin console.`);
     }catch(e){ toast(esc(e.message)); }
@@ -2346,6 +2607,11 @@ function exportGEDCOM(){
     if(p.died!=null){ L.push('1 DEAT', `2 DATE ${p.died}`); }
     if(p.occupation) L.push(`1 OCCU ${p.occupation}`);
     if(p.bio) L.push(`1 NOTE ${String(p.bio).replace(/\r?\n/g,' ')}`);
+    (p.stories||[]).forEach(s=>{
+      const flat=(s.title+' — '+s.body).replace(/\r?\n/g,' ');
+      L.push(`1 NOTE ${flat.slice(0,200)}`);
+      for(let i=200;i<flat.length;i+=200) L.push(`2 CONC ${flat.slice(i,i+200)}`);
+    });
     if(p.childOf && fref[p.childOf]){ L.push(`1 FAMC ${fref[p.childOf]}`); if(p.childType) L.push(`2 PEDI ${p.childType}`); }
     unionsOf(p.id).forEach(u=>{ if(fref[u.id]) L.push(`1 FAMS ${fref[u.id]}`); });
   });
@@ -2534,7 +2800,7 @@ $('#accountBtn').onclick=openAccount;
 $('#settingsBtn').onclick=openSettings;
 $('#relateBtn').onclick=openRelate;
 $('#importFile').onchange=e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; };
-$('#photoFile').onchange=e=>{ const f=e.target.files[0]; if(f) uploadPhoto(f); e.target.value=''; };
+$('#photoFile').onchange=e=>{ const f=e.target.files[0]; if(f){ if(state.photoMode==='gallery') uploadGalleryPhoto(f); else uploadPhoto(f); } e.target.value=''; };
 $('#scrim').onclick=e=>{ if(e.target.id==='scrim') closeGate(); };
 $('#search').oninput=e=>{ state.query=e.target.value; if(state.view!=='records'){ state.view='records'; } render(); if(REMOTE) globalSearch(e.target.value); };
 $('#search').onkeydown=e=>{ if(e.key!=='Enter') return;
@@ -2575,11 +2841,17 @@ $('#zoomers').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset
 svg.on('click',()=>closePanel());
 document.onkeydown=e=>{
   const typing=/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||'');
+  if($('#lightbox').classList.contains('show')){
+    if(e.key==='Escape') closeLightbox();
+    else if(e.key==='ArrowLeft') stepLightbox(-1);
+    else if(e.key==='ArrowRight') stepLightbox(1);
+    return;
+  }
   if(e.key==='Escape'){ if(_ctxEl){ closeCtx(); return; } closePanel(); closeGate(); if($('#welcome').classList.contains('show')) dismissWelcome(); if(typing) document.activeElement.blur(); }
   else if(e.key==='/' && !typing){ e.preventDefault(); $('#search').focus(); }
   else if(!typing && !e.ctrlKey && !e.metaKey && !e.altKey){
-    if(e.key>='1' && e.key<='4'){ state.view=['desc','anc','time','records'][Number(e.key)-1]; render(); }
-    else if(e.key==='f' && state.view!=='records') fitView();
+    if(e.key>='1' && e.key<='5'){ state.view=['desc','anc','time','photos','records'][Number(e.key)-1]; render(); }
+    else if(e.key==='f' && state.view!=='records' && state.view!=='photos') fitView();
   }
 };
 window.onresize=()=>{ if(state.view!=='records') fitView(); };
