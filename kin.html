@@ -534,6 +534,15 @@ async function copyPersonLink(id){
 }
 const localPins=new Set((()=>{ try{ return JSON.parse(localStorage.getItem('kin.pins')||'[]'); }catch{ return []; } })());
 
+/* ---- manual layout nudges: drag a family group in the descendant tree.
+   Offsets are a per-browser viewing preference (familyId -> pid -> [dx,dy]) */
+let LAYOUT={}; try{ const l=JSON.parse(localStorage.getItem('kin.layout.v1')||'{}'); if(l&&typeof l==='object') LAYOUT=l; }catch{}
+function saveLayout(){ try{ localStorage.setItem('kin.layout.v1',JSON.stringify(LAYOUT)); }catch{} }
+function resetLayout(){
+  if(LAYOUT[state.familyId]){ delete LAYOUT[state.familyId]; saveLayout(); render(); toast('Manual positions cleared — the layout is automatic again.'); }
+  else toast('No manual positions to reset for this family.');
+}
+
 async function api(path, opts={}){
   const res=await fetch('/api/kin'+path,{
     method:opts.method||'GET',
@@ -552,7 +561,8 @@ const canEditHere = ()=> REMOTE ? ['owner','admin','editor'].includes(myRole(sta
 const isPinned = f => REMOTE ? !!f.pinned : localPins.has(f.id);
 
 const famFromMeta = m => ({id:m.id, name:m.name, crest:m.crest, side:m.side||'', visibility:m.visibility, passwordHash:null,
-  rootId:m.rootId, pivotId:m.pivotId, desc:m.desc||'', count:m.count, myRole:m.myRole, pinned:m.pinned, hasPassword:m.hasPassword, canView:m.canView});
+  rootId:m.rootId, pivotId:m.pivotId, desc:m.desc||'', count:m.count, myRole:m.myRole, pinned:m.pinned, hasPassword:m.hasPassword,
+  privacyLiving:m.privacyLiving||'full', canView:m.canView});
 async function loadDirectory(){
   const d=await api('/families');
   const fresh={}; d.families.forEach(m=>{ fresh[m.id]=famFromMeta(m); });
@@ -757,6 +767,13 @@ function renderAccount(){
         <div style="display:flex;gap:8px"><input class="finput" id="pf_name" value="${esc(ME.user.name||'')}"><button class="btn-ghost" style="flex:none;padding:0 15px" onclick="saveProfile()">Save</button></div></div>
       ${ME.user.isSuper?'<div class="pv-tag" style="border-color:var(--gold);color:var(--gold)">Superadmin — every family, every action</div>':''}
       ${roles?`<div class="divlabel">My families</div>${roles}`:'<p class="hint">No family roles yet — open a family and request access, or request a new line from the directory.</p>'}
+      ${ME.user.hasPassword?`<div class="divlabel">Password</div>
+        <div class="field"><label>Current password</label><input class="finput" id="cp_cur" type="password" autocomplete="current-password"></div>
+        <div class="field"><label>New password (8+ characters)</label><input class="finput" id="cp_new" type="password" autocomplete="new-password"></div>
+        <button class="btn-ghost" style="width:100%" onclick="changePassword()">Change password</button>
+        <p class="hint" style="margin-top:8px">Changing it signs out every other device.</p>`:''}
+      <div class="divlabel">Active sessions</div>
+      <div id="sessList" class="hint">Loading…</div>
       <button class="btn-ghost" style="width:100%;margin-top:18px" onclick="signOut()">Sign out</button>
       <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="signOutEverywhere()">Sign out everywhere</button>
       ${ME.user.isSuper?`<div class="divlabel">Superadmin</div>
@@ -765,6 +782,7 @@ function renderAccount(){
       <div class="divlabel">Danger</div>
       <button class="btn-ghost" style="width:100%;color:var(--rust)" onclick="deleteAccount()">Delete my account…</button>
       <p class="hint" style="margin-top:14px">Privacy: living people's contact details are visible to family members only. Export your data anytime; deleting your account removes your roles and sessions while records stay with their families.</p>`;
+    loadSessions();
     return;
   }
   $('#panelBody').innerHTML=`
@@ -780,6 +798,39 @@ function renderAccount(){
     <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="setAuthMode('${authMode==='register'?'signin':'register'}')">${authMode==='register'?'I already have an account':'Create a new account'}</button>
     ${authMode==='register'?'':'<button class="btn-ghost" style="width:100%;margin-top:10px;border:none;background:none;color:var(--muted);font-size:12.5px" onclick="forgotPassword()">Forgot password?</button>'}`;
   const pw=$('#au_pass'); if(pw) pw.onkeydown=e=>{ if(e.key==='Enter') emailAuth(authMode==='register'?'register':'login'); };
+}
+
+/* ---- account security: sessions manager + password change ---- */
+function uaLabel(ua){
+  if(!ua) return 'Unknown device';
+  const b=/Edg\//.test(ua)?'Edge':/OPR\//.test(ua)?'Opera':/Firefox\//.test(ua)?'Firefox':/Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Browser';
+  const os=/Windows/.test(ua)?'Windows':/Android/.test(ua)?'Android':/iPhone|iPad/.test(ua)?'iOS':/Mac OS/.test(ua)?'macOS':/Linux/.test(ua)?'Linux':'';
+  return b+(os?' · '+os:'');
+}
+async function loadSessions(){
+  const box=$('#sessList'); if(!box) return;
+  try{
+    const d=await api('/me/sessions');
+    box.innerHTML=d.sessions.map(s=>`<div class="memrow">
+      <div class="mav" style="font-size:12px">${s.current?'●':'○'}</div>
+      <div style="flex:1;min-width:0"><div class="mn">${esc(uaLabel(s.agent))}${s.current?' — this device':''}</div>
+        <div class="me">signed in ${esc(String(s.createdAt||'').slice(0,16))}${s.lastSeen?' · active '+esc(String(s.lastSeen).slice(0,16)):''}</div></div>
+      ${s.current?'':`<button class="pinbtn" title="Sign out this session" onclick="revokeSession('${htmlId(s.sid)}')">✕</button>`}
+    </div>`).join('')||'<div class="empty">Only this session.</div>';
+  }catch(e){ box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'; }
+}
+async function revokeSession(sid){
+  try{ await api('/me/sessions/'+htmlId(sid),{method:'DELETE'}); toast('That session is signed out.'); loadSessions(); }
+  catch(e){ toast(esc(e.message)); }
+}
+async function changePassword(){
+  const cur=$('#cp_cur')?.value||'', nw=$('#cp_new')?.value||'';
+  if(nw.length<8){ toast('The new password needs at least 8 characters.'); return; }
+  try{
+    await api('/auth/change-password',{method:'POST',body:{current:cur, password:nw}});
+    toast('Password changed — every other device was signed out.');
+    renderAccount();
+  }catch(e){ toast(esc(e.message)); }
 }
 
 /* ---- pins ---- */
@@ -953,13 +1004,19 @@ function unionBarLabel(u){
   return yrs ? ((u.type==='partnership'?'':'m. ')+yrs) : '';
 }
 const PLATE_SUFFIX={marriage:' · married in', partnership:' · partner', divorced:' · divorced', separated:' · separated'};
+let PLATE_POS={};   // pid -> [x,y] in chart coords, rebuilt by renderDesc
 function renderDesc(){
-  g.selectAll('*').remove(); addDefs();
+  g.selectAll('*').remove(); addDefs(); PLATE_POS={};
   let rootId = state.descRoot || descRootOf(state.familyId);
   if(!P(rootId)) rootId = (approvedOf(state.familyId)[0]||{}).id;
   if(!rootId){ $('#hintchip').textContent='This record is empty — use “Add kin” to begin the line.'; return; }
   const root = descHierarchy(rootId);
   d3.tree().nodeSize([1,158]).separation((a,b)=>(nodeWidthPx(a)+nodeWidthPx(b))/2 + (a.parent===b.parent?36:64))(root);
+
+  /* manual nudges: remember the automatic position, then apply stored offsets */
+  const offs=LAYOUT[state.familyId]||{};
+  root.descendants().forEach(d=>{ d._bx=d.x; d._by=d.y;
+    const o=offs[d.data.pid]; if(Array.isArray(o)){ d.x+=Number(o[0])||0; d.y+=Number(o[1])||0; } });
 
   /* pixel geometry per group: plate x-positions, marriage bars, and the point
      each union's children drop from */
@@ -987,19 +1044,35 @@ function renderDesc(){
     });
   });
 
-  g.append('g').attr('class','links').selectAll('path').data(root.links()).join('path')
-    .attr('fill','none').attr('stroke','var(--gold)')
-    .attr('stroke-opacity',d=>P(d.target.data.pid)?.childType?.38:.5)
-    .attr('stroke-dasharray',d=>P(d.target.data.pid)?.childType?'5 4':null)
-    .attr('stroke-width',1.4)
-    .attr('d',d=>{
+  const linkPath=d=>{
       const t=P(d.target.data.pid);
       const drop=(t&&t.childOf&&d.source._drops[t.childOf])||null;
       const sx=d.source.x+(drop?drop.x:d.source._px), sy=d.source.y+(drop?drop.y:PH/2);
       const tx=d.target.x+d.target._px, ty=d.target.y-PH/2, my=(d.source.y+PH/2+ty)/2;
-      return settings.links==='stepped' ? `M${sx},${sy} V${my} H${tx} V${ty}` : `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;});
+      return settings.links==='stepped' ? `M${sx},${sy} V${my} H${tx} V${ty}` : `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;};
+  const linkSel=g.append('g').attr('class','links').selectAll('path').data(root.links()).join('path')
+    .attr('fill','none').attr('stroke','var(--gold)')
+    .attr('stroke-opacity',d=>P(d.target.data.pid)?.childType?.38:.5)
+    .attr('stroke-dasharray',d=>P(d.target.data.pid)?.childType?'5 4':null)
+    .attr('stroke-width',1.4)
+    .attr('d',linkPath);
 
   const ng=g.append('g').selectAll('g').data(root.descendants()).join('g').attr('transform',d=>`translate(${d.x},${d.y})`);
+  /* drag a family group anywhere; the offset persists in this browser */
+  ng.style('cursor','grab').call(d3.drag()
+    .subject((e,d)=>({x:d.x, y:d.y}))
+    .on('drag',function(e,d){
+      d.x=e.x; d.y=e.y;
+      d3.select(this).attr('transform',`translate(${d.x},${d.y})`);
+      linkSel.attr('d',linkPath);
+    })
+    .on('end',(e,d)=>{
+      const dx=Math.round(d.x-d._bx), dy=Math.round(d.y-d._by);
+      const f=LAYOUT[state.familyId]||(LAYOUT[state.familyId]={});
+      if(Math.abs(dx)<4 && Math.abs(dy)<4) delete f[d.data.pid]; else f[d.data.pid]=[dx,dy];
+      if(!Object.keys(f).length) delete LAYOUT[state.familyId];
+      saveLayout();
+    }));
   ng.each(function(d){
     const el=d3.select(this);
     d._bars.forEach(b=>{
@@ -1016,6 +1089,7 @@ function renderDesc(){
     });
     d._seq.forEach((s,j)=>{
       const p=P(s.pid); if(!p) return;
+      PLATE_POS[p.id]=[d.x+d._xs[j], d.y];
       const suffix=s.person?'':(PLATE_SUFFIX[(U(s.uid)||{}).type]||'');
       plate(el.append('g').attr('transform',`translate(${d._xs[j]},0)`), p, suffix);
     });
@@ -1024,7 +1098,7 @@ function renderDesc(){
 }
 let _clipSeq=0;
 function plate(sel,p,suffix){
-  const gg=sel.attr('class','node-g').on('click',(e)=>{e.stopPropagation(); openPerson(p.id);})
+  const gg=sel.attr('class','node-g').attr('data-pid',p.id).on('click',(e)=>{e.stopPropagation(); openPerson(p.id);})
     .on('contextmenu',(e)=>personCtx(e,p.id));
   const pl=gg.append('g').attr('class','node-plate');
   pl.append('rect').attr('x',-PW/2).attr('y',-PH/2).attr('width',PW).attr('height',PH).attr('rx',11)
@@ -1163,6 +1237,15 @@ function monthDay(v){
   const iso=s.match(/^\d{4}-(\d{2})-(\d{2})/); if(iso) return Number(iso[1])+'/'+Number(iso[2]);
   return null;
 }
+const MONTH_IDX={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+/* month/day from "March 8, 1990" or "1990-03-08"; null when only a year is known */
+function mdOf(v){
+  const s=String(v??'');
+  let m=s.match(/^([A-Za-z]+)\s+(\d{1,2})/);
+  if(m){ const mi=MONTH_IDX[m[1].slice(0,3).toLowerCase()]; return mi===undefined?null:[mi,Number(m[2])]; }
+  m=s.match(/^\d{4}-(\d{2})-(\d{2})/); if(m) return [Number(m[1])-1, Number(m[2])];
+  return null;
+}
 function renderOnThisDay(){
   const box=$('#onThisDay'); if(!box) return;
   const now=new Date();
@@ -1172,9 +1255,24 @@ function renderOnThisDay(){
     if(monthDay(p.born)===key) items.push({p, kind: isLiving(p)?'birthday':'born'});
     if(!isLiving(p) && monthDay(p.died)===key) items.push({p, kind:'remembered'});
   });
-  if(!items.length){ box.innerHTML=''; return; }
+  /* birthdays in the next 30 days, for the living */
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const upcoming=[];
+  approvedOf(state.familyId).forEach(p=>{
+    if(!isLiving(p)) return;
+    const md=mdOf(p.born); if(!md) return;
+    let d=new Date(today.getFullYear(),md[0],md[1]);
+    if(d<=today) d=new Date(today.getFullYear()+1,md[0],md[1]);
+    const days=Math.round((d-today)/86400e3);
+    if(days>0 && days<=30){ const by=Number(yearOf(p.born)); upcoming.push({p,days,age:by?d.getFullYear()-by:null}); }
+  });
+  upcoming.sort((a,b)=>a.days-b.days);
   const label={birthday:'🎂 Birthday today',born:'Born today',remembered:'Remembered today'};
-  box.innerHTML=`<div class="statchips" style="margin-bottom:16px">${items.map(it=>`<span style="cursor:pointer" onclick="openPerson('${htmlId(it.p.id)}')"><b>${esc(label[it.kind])}</b> · ${esc(it.p.name)}</span>`).join('')}</div>`;
+  const chips=[
+    ...items.map(it=>`<span style="cursor:pointer" onclick="openPerson('${htmlId(it.p.id)}')"><b>${esc(label[it.kind])}</b> · ${esc(it.p.name)}</span>`),
+    ...upcoming.slice(0,6).map(u=>`<span style="cursor:pointer" onclick="openPerson('${htmlId(u.p.id)}')">🎂 ${esc(u.p.name.split(' ')[0])}${u.age?` turns <b>${u.age}</b>`:''} in <b>${u.days}</b> day${u.days>1?'s':''}</span>`),
+  ];
+  box.innerHTML=chips.length?`<div class="statchips" style="margin-bottom:16px">${chips.join('')}</div>`:'';
 }
 /* ---- family health: nobody unconnected, no impossible dates ---- */
 function familyHealth(fid){
@@ -1220,7 +1318,7 @@ function exportCSV(){
   approvedOf(state.familyId).forEach(p=>rows.push([p.name,p.sex||'',p.born||'',p.died||'',p.occupation||'',p.place||'',p.childType||'',(p.bio||'').replace(/\r?\n/g,' ')]));
   const csv=rows.map(r=>r.map(c=>{ const s=String(c); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\r\n');
   download(`kin-${state.familyId}.csv`, csv, 'text/csv');
-  toast('CSV downloaded.');
+  toast(approvedOf(state.familyId).some(isLiving)?'CSV downloaded. It includes living people — share with care.':'CSV downloaded.');
 }
 function familyStats(fid){
   const ps=approvedOf(fid);
@@ -1292,7 +1390,7 @@ function render(){
   $('#hintchip').innerHTML = ({
     anc:'Ancestor chart · the focus person sits on the left, each column climbs one generation. Dashed plates are missing parents — click to add. Right-click for quick actions.',
     time:'Timeline · every dated life as a bar, oldest first. The dashed green line is today. Right-click a bar for quick actions.',
-  })[state.view] || 'Descendant tree · every union is a bar (dashed = partnership, dotted = ended), children hang from theirs. Right-click anyone — or any bar — for quick actions.';
+  })[state.view] || 'Descendant tree · every union is a bar (dashed = partnership, dotted = ended), children hang from theirs. Drag a family to rearrange; right-click anyone — or any bar — for quick actions.';
 
   /* young record: offer the first branches right on the stage */
   const ob=$('#onboard');
@@ -1391,6 +1489,7 @@ function personCtx(e,id){
     {l:'Add partner…', i:'⚭', fn:()=>openAdd('partner',id)},
     {l:parentsOf(id).length===1?'Add other parent…':'Add parent…', i:'＋', fn:()=>openAdd('parent',id)},
     '—',
+    {l:'Show in tree', i:'⌖', fn:()=>showInTree(id)},
     {l:'Show ancestors', i:'↑', fn:()=>{ state.ancFocus=id; state.view='anc'; render(); }},
     {l:'Show descendants', i:'↓', fn:()=>{ state.descRoot=id; state.view='desc'; render(); }},
     {l:'How related to…?', i:'⇄', fn:()=>{ state.relA=id; state.relB=null; openRelate(); }},
@@ -1420,6 +1519,7 @@ function canvasCtx(e){
     '—',
     {l:'Fit to view', i:'⊙', fn:fitView},
     {l:'Download as image', i:'⤓', fn:exportPNG},
+    state.view==='desc'?{l:'Reset manual layout', i:'⟲', fn:resetLayout}:null,
     '—',
     state.view!=='desc'?{l:'Descendants view', i:'↓', fn:()=>{ state.view='desc'; render(); }}:null,
     state.view!=='anc'?{l:'Ancestors view', i:'↑', fn:()=>{ state.view='anc'; render(); }}:null,
@@ -1428,6 +1528,21 @@ function canvasCtx(e){
   ]);
 }
 function openPanelBare(){ $('#panel').classList.remove('wide'); $('#panel').classList.add('open'); }
+
+/* ---- centre a person in the descendant tree and pulse their plate ---- */
+function showInTree(pid){
+  const p=P(pid); if(!p) return;
+  closePanel();
+  state.view='desc'; state.descRoot=null; render();
+  if(!PLATE_POS[pid]){ state.descRoot=oldestAncestor(pid); render(); }
+  const pos=PLATE_POS[pid];
+  if(!pos){ toast(`${strong(p.name)} isn’t connected into this tree yet — add a parent, partner, or child first.`); return; }
+  const cw=svg.node().clientWidth, ch=svg.node().clientHeight;
+  svg.transition().duration(650).call(zoom.transform, d3.zoomIdentity.translate(cw/2-pos[0], ch/2-pos[1]).scale(1));
+  const rect=g.select(`[data-pid="${htmlId(pid)}"] rect`);
+  if(!rect.empty()) rect.attr('stroke','var(--gold)').attr('stroke-width',2.4)
+    .transition().delay(1500).duration(700).attr('stroke','var(--line)').attr('stroke-width',1);
+}
 
 /* ================================================================
    PERSON PANEL  (with relationship-aware actions)
@@ -1442,6 +1557,7 @@ function openPerson(id,opts={}){
     <div class="pv-av">${avFor(p)}</div>
     <h2>${esc(p.name)}</h2><div class="pv-dates">${esc(dates(p))}${(()=>{const a=ageOf(p); return a==null?'':isLiving(p)?` · age ${a}`:` · lived ${a} years`;})()}</div>
     <div class="pv-tag">${isLiving(p)?'<i class="dot" style="background:var(--verd)"></i> Living':'In memory'} · ${esc(DB.families[p.familyId].name)} line</div>
+    ${REMOTE&&isLiving(p)&&(DB.families[p.familyId]||{}).privacyLiving==='limited'?'<div class="pv-tag" title="Full birth date, notes, occupation, place, and photo are hidden from non-members">🔒 Living — details members-only</div>':''}
     ${p.status==='pending'?'<div class="pv-tag" style="border-color:var(--rust);color:var(--rust)">Pending approval</div>':''}`;
 
   let body=`<div class="actions">
@@ -1450,6 +1566,7 @@ function openPerson(id,opts={}){
     <button class="act full" onclick="openAdd('parent','${htmlId(id)}')">${plus()} Add ${parents.length?'other parent':'parents'}</button>
     <button class="act" onclick="state.ancFocus='${htmlId(id)}';state.view='anc';render()">Ancestry ↑</button>
     <button class="act" onclick="state.descRoot='${htmlId(id)}';state.view='desc';render()">Descendants ↓</button>
+    <button class="act full" onclick="showInTree('${htmlId(id)}')">⌖ Show in tree</button>
     ${canEdit&&canDelete?`<button class="act" onclick="openEdit('${htmlId(id)}')">Edit record</button><button class="act danger" onclick="deletePerson('${htmlId(id)}')">Delete record</button>`
       :canEdit?`<button class="act full" onclick="openEdit('${htmlId(id)}')">Edit record</button>`
       :(REMOTE&&ME.user)?`<button class="act full" onclick="openEdit('${htmlId(id)}')">Suggest an edit</button>`:''}
@@ -2024,6 +2141,10 @@ async function renderAdminRemote(){
       <div class="field"><label>This line is…</label><input class="finput" id="fs_side" value="${esc(f.side||'')}"></div>
       <div class="field"><label>Description</label><textarea class="finput" id="fs_desc">${esc(f.desc||'')}</textarea></div>
       <div class="field"><label>Visibility</label><select class="finput" id="fs_vis"><option value="public" ${f.visibility==='public'?'selected':''}>Public — anyone can browse</option><option value="private" ${f.visibility==='private'?'selected':''}>Private — members & password only</option></select></div>
+      <div class="field"><label>Living people's details</label><select class="finput" id="fs_privliv">
+        <option value="limited" ${f.privacyLiving!=='full'?'selected':''}>Members only — others see name + birth year</option>
+        <option value="full" ${f.privacyLiving==='full'?'selected':''}>Everyone who can open this family</option></select></div>
+      <p class="hint" style="margin-top:-8px">“Members only” hides full birth dates, notes, occupation, place, and photos of living people from anyone without a role here.</p>
       <div class="field"><label>Family password (blank = keep, "-" = remove)</label><input class="finput" id="fs_pass" type="password" placeholder="${f.hasPassword?'••••••  (set)':'not set'}" autocomplete="new-password"></div>
       <div class="row2">
         <div class="field"><label>Tree root</label><select class="finput" id="fs_root">${approvedOf(f.id).map(p=>`<option value="${htmlId(p.id)}" ${p.id===f.rootId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
@@ -2061,7 +2182,8 @@ async function inviteRemote(){
 async function saveFamilySettings(){
   const pass=$('#fs_pass').value;
   const body={ name:$('#fs_name').value.trim(), crest:$('#fs_crest').value.trim(), side:$('#fs_side').value.trim(),
-    desc:$('#fs_desc').value.trim(), visibility:$('#fs_vis').value, rootId:$('#fs_root').value, pivotId:$('#fs_pivot').value };
+    desc:$('#fs_desc').value.trim(), visibility:$('#fs_vis').value, privacyLiving:$('#fs_privliv').value,
+    rootId:$('#fs_root').value, pivotId:$('#fs_pivot').value };
   if(pass==='-') body.password=''; else if(pass) body.password=pass;
   try{ await api('/families/'+encodeURIComponent(state.familyId),{method:'PATCH',body});
     await loadDirectory(); await loadFamily(state.familyId); renderAdmin(); render(); toast('Family settings saved.'); }
@@ -2240,7 +2362,7 @@ function exportGEDCOM(){
   });
   L.push('0 TRLR');
   download(`kin-${fid}.ged`, L.join('\r\n'), 'text/plain');
-  toast(`GEDCOM for ${strong(f.name)} downloaded.`);
+  toast(`GEDCOM for ${strong(f.name)} downloaded.${ps.some(isLiving)?' It includes living people — share with care.':''}`);
 }
 
 /* ---- chart → PNG (resolves CSS variables so the image stands alone) ---- */
