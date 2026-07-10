@@ -655,7 +655,7 @@ const isPinned = f => REMOTE ? !!f.pinned : localPins.has(f.id);
 
 const famFromMeta = m => ({id:m.id, name:m.name, crest:m.crest, side:m.side||'', visibility:m.visibility, passwordHash:null,
   rootId:m.rootId, pivotId:m.pivotId, desc:m.desc||'', count:m.count, myRole:m.myRole, pinned:m.pinned, hasPassword:m.hasPassword,
-  privacyLiving:m.privacyLiving||'full', canView:m.canView});
+  privacyLiving:m.privacyLiving||'full', discoverable:m.discoverable!==false, canView:m.canView});
 async function loadDirectory(){
   const d=await api('/families');
   const fresh={}; d.families.forEach(m=>{ fresh[m.id]=famFromMeta(m); });
@@ -968,7 +968,9 @@ const approvedOf = fid=>membersOf(fid).filter(p=>p.status==='approved');
 const unionsOf = pid=>Object.values(DB.unions).filter(u=>u.a===pid||u.b===pid);
 const partnerIn = (pid,u)=> u.a===pid?u.b:u.a;
 const childrenOf = pid=>{ const kids=[]; unionsOf(pid).forEach(u=>{ Object.values(DB.persons).forEach(p=>{ if(p.childOf===u.id) kids.push(p); }); }); return kids; };
-const parentsOf = pid=>{ const p=P(pid); if(!p||!p.childOf) return []; const u=U(p.childOf); return [P(u.a),P(u.b)].filter(Boolean); };
+/* tolerate dangling childOf (e.g. both parents deleted: the union row is no
+   longer served, but the child still points at it) */
+const parentsOf = pid=>{ const p=P(pid); if(!p||!p.childOf) return []; const u=U(p.childOf); if(!u) return []; return [P(u.a),P(u.b)].filter(Boolean); };
 const primaryPartner = pid=>{ const u=unionsOf(pid).find(u=>u.status==='approved'); return u?P(partnerIn(pid,u)):null; };
 /* every approved union of a person, with the partner record (null = unrecorded) */
 const partnersOf = pid=>unionsOf(pid).filter(u=>u.status==='approved')
@@ -1003,7 +1005,7 @@ const descRootOf = fid=>{ const f=DB.families[fid]; if(!f) return null;
   return base?oldestAncestor(base):null; };
 const pendingKin = fid=>membersOf(fid).filter(p=>p.status==='pending');
 const totalAdminCount = ()=> REMOTE
-  ? (PENDINGDATA ? PENDINGDATA.pendingKin.length + PENDINGDATA.changes.length + PENDINGDATA.joins.length : 0) + FAMREQS.length
+  ? (PENDINGDATA ? PENDINGDATA.pendingKin.length + PENDINGDATA.changes.length + PENDINGDATA.joins.length + (PENDINGDATA.links||[]).length + (PENDINGDATA.claims||[]).length : 0) + FAMREQS.length
   : pendingKin(state.familyId).length + DB.familyRequests.filter(r=>r.status==='pending').length + DB.joinRequests.filter(r=>r.status==='pending'&&r.family===state.familyId).length;
 const hasAccess = fid=> REMOTE ? !!DB.families[fid]?.canView : (state.admin || unlocked.has(fid) || DB.families[fid]?.visibility!=='private');
 const esc = value=>String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -1294,7 +1296,7 @@ function plate(sel,p,suffix){
    ================================================================ */
 function ancestorAt(focusId,gen,k){
   let cur=focusId;
-  for(let i=0;i<gen;i++){ const p=P(cur); if(!p||!p.childOf) return null; const u=U(p.childOf); cur = ((k>>(gen-1-i))&1) ? u.b : u.a; }
+  for(let i=0;i<gen;i++){ const p=P(cur); if(!p||!p.childOf) return null; const u=U(p.childOf); if(!u) return null; cur = ((k>>(gen-1-i))&1) ? u.b : u.a; }
   return cur;
 }
 /* Horizontal pedigree: focus on the left, generations climb rightward.
@@ -1780,7 +1782,7 @@ function openPerson(id,opts={}){
   const p=P(id); if(!p) return;
   noteRecent(id);
   const partner=primaryPartner(id), parents=parentsOf(id), kids=childrenOf(id).filter(k=>k.status==='approved');
-  const canEdit = REMOTE ? canEditHere() : state.admin;
+  const canEdit = REMOTE ? (canEditHere() || !!p.mine) : state.admin;
   const canDelete = isAdminHere();
   $('#panel').classList.remove('wide');
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button>
@@ -1789,6 +1791,7 @@ function openPerson(id,opts={}){
     <div class="pv-tags">
       <span class="pv-tag">${isLiving(p)?'<i class="dot" style="background:var(--verd)"></i> Living':'In memory'} · ${esc(DB.families[p.familyId].name)} line</span>
       ${REMOTE&&isLiving(p)&&(DB.families[p.familyId]||{}).privacyLiving==='limited'?'<span class="pv-tag" title="Full birth date, notes, occupation, place, and photo are hidden from non-members">🔒 Members-only details</span>':''}
+      ${p.mine?'<span class="pv-tag" style="border-color:var(--verd);color:var(--verd)" title="You claimed this record — you manage it and its connections">✓ You manage this</span>':p.claimed?'<span class="pv-tag" title="A signed-in family member manages this record themselves">✓ Self-managed</span>':''}
       ${p.status==='pending'?'<span class="pv-tag" style="border-color:var(--rust);color:var(--rust)">Pending approval</span>':''}
     </div>`;
 
@@ -1803,6 +1806,7 @@ function openPerson(id,opts={}){
       :canEdit?`<button class="act full" onclick="openEdit('${htmlId(id)}')">Edit record</button>`
       :(REMOTE&&ME.user)?`<button class="act full" onclick="openEdit('${htmlId(id)}')">Suggest an edit</button>`:''}
     ${REMOTE?`<button class="act full" onclick="copyPersonLink('${htmlId(id)}')">Copy link to this record</button>`:''}
+    ${REMOTE&&ME.user&&!p.claimed&&isLiving(p)?`<button class="act full" onclick="claimPerson('${htmlId(id)}')" title="Claim this record so you manage it and its connections yourself">👤 This is me</button>`:''}
   </div>`;
   state.lastPerson=id;
   if(p.occupation) body+=`<div class="field"><label>Occupation</label><p>${esc(p.occupation)}</p></div>`;
@@ -2004,8 +2008,26 @@ async function linkPerson(relation, anchorId, targetId){
   try{
     const d=await api('/persons/'+htmlId(anchorId)+'/link',{method:'POST',body:{targetId, relation, type}});
     closePanel(); await loadFamily(state.familyId); await loadPending(); render();
-    toast(d.already?'They were already linked.':d.crossFamily?'Trees joined — this person now appears in both.':'Linked.');
+    toast(d.queued?'Link requested — the other family’s admins decide whether to join the trees.'
+      :d.already?'They were already linked.'
+      :d.crossFamily?'Trees joined — this person now appears in both.':'Linked.');
   }catch(e){ toast(esc(e.message)); }
+}
+
+/* ---- "this is me": claim a record so you manage it yourself ---- */
+async function claimPerson(id){
+  const p=P(id); if(!p) return;
+  if(!(await ask(`Claim ${p.name} as yourself? Once a family admin confirms, you manage this record and its connections directly.`,{title:'This is me', confirmLabel:'Yes, this is me', danger:false}))) return;
+  try{
+    const d=await api('/persons/'+htmlId(id)+'/claim',{method:'POST',body:{}});
+    if(d.claimed){ await loadFamily(state.familyId); toast('Confirmed — you manage this record now.'); openPerson(id); render(); }
+    else toast(d.already?'Your claim is already waiting for an admin.':'Claim sent — a family admin will confirm it’s you.');
+  }catch(e){ toast(esc(e.message)); }
+}
+async function unclaimPerson(id){
+  if(!(await ask('Remove the claim on this record? They go back to normal family moderation.',{title:'Remove claim', confirmLabel:'Remove claim'}))) return;
+  try{ await api('/persons/'+htmlId(id)+'/claim',{method:'DELETE'}); await loadFamily(state.familyId); toast('Claim removed.'); openPerson(id); render(); }
+  catch(e){ toast(esc(e.message)); }
 }
 async function submitKin(){
   const name=$('#f_name').value.trim(); if(!name){ toast('A name is needed.'); return; }
@@ -2080,8 +2102,9 @@ async function submitKin(){
   else if(rel==='partner' && anchorId){ newUnion(anchorId,id,{type:unionType,since:uSince,until:uUntil}); }
   else if(rel==='parent' && anchorId){
     const child=P(anchorId);
-    if(child.childOf){ const u=U(child.childOf); if(!u.a) u.a=id; else if(!u.b) u.b=id; else { toast('Both parents already recorded.'); } }
-    else { const u=newUnion(id,null); child.childOf=u.id; }
+    const u=child.childOf?U(child.childOf):null;
+    if(u){ if(!u.a) u.a=id; else if(!u.b) u.b=id; else { toast('Both parents already recorded.'); } }
+    else { const nu=newUnion(id,null); child.childOf=nu.id; }
   }
   closePanel(); saveDB();
   if(state.admin){ toast(`${strong(name)} added.`); render(); }
@@ -2109,6 +2132,8 @@ function openEdit(id){
     <div class="field"><label>Died <i class="lh">blank if living</i></label><input class="finput" id="e_died" value="${esc(p.died||'')}"></div></div>
     <div class="row2"><div class="field"><label>Occupation</label><input class="finput" id="e_occ" value="${esc(p.occupation||'')}"></div>
     <div class="field"><label>Place</label><input class="finput" id="e_place" value="${esc(p.place||'')}"></div></div>
+    ${REMOTE&&p.claimed&&(isAdminHere()||p.mine)?`<div class="field"><label>Claim</label>
+      <button class="act" style="width:100%" onclick="unclaimPerson('${htmlId(id)}')">Remove “this is me” claim…</button></div>`:''}
     ${p.childOf?`<div class="field"><label>Relationship to parents</label><select class="finput" id="e_ctype">
       ${[['','Biological'],['adopted','Adopted'],['step','Step'],['foster','Foster']].map(([v,l])=>`<option value="${v}"${(p.childType||'')===v?' selected':''}>${l}</option>`).join('')}</select></div>`:''}
     <div class="field"><label>Note</label><textarea class="finput" id="e_bio">${esc(p.bio||'')}</textarea></div>
@@ -2765,10 +2790,10 @@ async function renderAdminRemote(){
   const f=fam();
   if(!PENDINGDATA){ try{ PENDINGDATA=await api('/families/'+encodeURIComponent(f.id)+'/pending'); }catch{ PENDINGDATA={pendingKin:[],changes:[],joins:[]}; } }
   if(MEMBERS===null && state.adminTab==='members'){ try{ MEMBERS=await api('/families/'+encodeURIComponent(f.id)+'/members'); }catch{ MEMBERS={members:[],invites:[]}; } }
-  const pk=PENDINGDATA.pendingKin, cs=PENDINGDATA.changes, jr=PENDINGDATA.joins;
+  const pk=PENDINGDATA.pendingKin, cs=PENDINGDATA.changes, jr=PENDINGDATA.joins, lk=PENDINGDATA.links||[], cl=PENDINGDATA.claims||[];
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Admin console</h2><div class="pv-dates" style="color:var(--muted)">${esc(f.name)} · you are ${esc(amSuper()?'superadmin':myRole(f.id)||'')}</div>`;
   const tab=(id,label,n)=>`<button class="${state.adminTab===id?'active':''}" onclick="state.adminTab='${id}';renderAdmin()">${label}${n?`<span class="tseal">${n}</span>`:''}</button>`;
-  const tabs=`<div class="tabs">${tab('pending','Kin',pk.length)}${tab('edits','Edits',cs.length)}${tab('join','Access',jr.length)}${tab('members','Roles',0)}${tab('family','Family',0)}${tab('trash','Trash',0)}${tab('log','Log',0)}${amSuper()?tab('families','Lines',FAMREQS.length):''}</div>`;
+  const tabs=`<div class="tabs">${tab('pending','Kin',pk.length)}${tab('edits','Edits',cs.length+lk.length)}${tab('join','Access',jr.length+cl.length)}${tab('members','Roles',0)}${tab('family','Family',0)}${tab('trash','Trash',0)}${tab('log','Log',0)}${amSuper()?tab('families','Lines',FAMREQS.length):''}</div>`;
   let body='';
   if(state.adminTab==='trash'){
     let trash=[]; try{ trash=(await api('/families/'+encodeURIComponent(f.id)+'/trash')).trash; }catch{}
@@ -2790,15 +2815,22 @@ async function renderAdminRemote(){
       <p>${esc(p.bio||'No note.')}</p><div class="row"><button class="approve" onclick="approveKin('${htmlId(p.id)}')">Approve</button><button class="decline" onclick="declineKin('${htmlId(p.id)}')">Decline</button></div></div>`).join('')
       : '<div class="empty">No kin awaiting approval.</div>';
   } else if(state.adminTab==='edits'){
-    body = cs.length ? cs.map(c=>`<div class="card"><h4>${esc(c.personName)}</h4><div class="sub">edit proposed by ${esc(c.by||'someone')}</div>
+    const linkCards=lk.map(l=>`<div class="card"><h4>Join trees: ${esc(l.targetName)}</h4>
+      <div class="sub">${esc(l.by||'someone')} wants to link ${esc(l.targetName)} as ${esc(l.relation)}${l.relation==='partner'&&l.type?' ('+esc(UNION_WORD[l.type]||l.type)+')':''} of ${esc(l.anchorName)}</div>
+      <p>Approving connects the two trees — the person appears in both, and edits stay in sync.</p>
+      <div class="row"><button class="approve" onclick="actLink('${htmlId(l.id)}','approve')">Approve link</button><button class="decline" onclick="actLink('${htmlId(l.id)}','reject')">Decline</button></div></div>`).join('');
+    const editCards=cs.map(c=>`<div class="card"><h4>${esc(c.personName)}</h4><div class="sub">edit proposed by ${esc(c.by||'someone')}</div>
       <p>${Object.entries(c.patch).map(([k,v])=>`<b style="color:var(--gold)">${esc(k)}</b> → ${esc(v==null?'—':String(v))}`).join('<br>')}</p>
-      <div class="row"><button class="approve" onclick="actChange('${htmlId(c.id)}','approve')">Apply</button><button class="decline" onclick="actChange('${htmlId(c.id)}','reject')">Reject</button></div></div>`).join('')
-      : '<div class="empty">No proposed edits.</div>';
+      <div class="row"><button class="approve" onclick="actChange('${htmlId(c.id)}','approve')">Apply</button><button class="decline" onclick="actChange('${htmlId(c.id)}','reject')">Reject</button></div></div>`).join('');
+    body = (linkCards+editCards) || '<div class="empty">No proposed edits or link requests.</div>';
   } else if(state.adminTab==='join'){
-    body = jr.length ? jr.map(r=>`<div class="card"><h4>${esc(r.by||'')}</h4><div class="sub">${esc(r.email||'')}</div>
+    const claimCards=cl.map(c=>`<div class="card"><h4>“This is me” — ${esc(c.personName)}</h4><div class="sub">${esc(c.by||'')} · ${esc(c.email||'')}</div>
+      <p>${esc(c.note||'Wants to manage their own record and connections.')}</p>
+      <div class="row"><button class="approve" onclick="actClaim('${htmlId(c.id)}','approve')">Confirm it’s them</button><button class="decline" onclick="actClaim('${htmlId(c.id)}','reject')">Decline</button></div></div>`).join('');
+    const joinCards=jr.map(r=>`<div class="card"><h4>${esc(r.by||'')}</h4><div class="sub">${esc(r.email||'')}</div>
       <p>${esc(r.note||'Requests access to this record.')}</p>
-      <div class="row"><button class="approve" onclick="actJoin('${htmlId(r.id)}','grant')">Grant viewer access</button><button class="decline" onclick="actJoin('${htmlId(r.id)}','deny')">Deny</button></div></div>`).join('')
-      : '<div class="empty">No access requests.</div>';
+      <div class="row"><button class="approve" onclick="actJoin('${htmlId(r.id)}','grant')">Grant viewer access</button><button class="decline" onclick="actJoin('${htmlId(r.id)}','deny')">Deny</button></div></div>`).join('');
+    body = (claimCards+joinCards) || '<div class="empty">No access requests or claims.</div>';
   } else if(state.adminTab==='members'){
     const M=MEMBERS||{members:[],invites:[]};
     body=`<p class="hint">Roles for the ${esc(f.name)} record. Owners manage everything; admins approve and invite; editors add and edit directly; viewers read and propose.</p>`+
@@ -2823,6 +2855,10 @@ async function renderAdminRemote(){
         <option value="limited" ${f.privacyLiving!=='full'?'selected':''}>Members only — others see name + birth year</option>
         <option value="full" ${f.privacyLiving==='full'?'selected':''}>Everyone who can open this family</option></select></div>
       <p class="hint" style="margin-top:-8px">“Members only” hides full birth dates, notes, occupation, place, and photos of living people from anyone without a role here.</p>
+      <div class="field"><label>Search suggestions</label><select class="finput" id="fs_disc">
+        <option value="1" ${f.discoverable!==false?'selected':''}>Suggest our people to other families</option>
+        <option value="0" ${f.discoverable===false?'selected':''}>Keep our people out of others’ searches</option></select></div>
+      <p class="hint" style="margin-top:-8px">Controls whether people here appear as link/duplicate suggestions when someone in another family is adding kin. Members always see their own family.</p>
       <div class="field"><label>Family password <i class="lh">blank keeps · “-” removes</i></label><input class="finput" id="fs_pass" type="password" placeholder="${f.hasPassword?'••••••  (set)':'not set'}" autocomplete="new-password"></div>
       <div class="row2">
         <div class="field"><label>Tree root</label><select class="finput" id="fs_root">${approvedOf(f.id).map(p=>`<option value="${htmlId(p.id)}" ${p.id===f.rootId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
@@ -2848,6 +2884,8 @@ async function purgePerson(id,name){
 }
 async function actChange(id,verb){ try{ await api('/change-requests/'+htmlId(id)+'/'+verb,{method:'POST'}); PENDINGDATA=null; await loadFamily(state.familyId); await loadPending(); renderAdmin(); render(); toast(verb==='approve'?'Edit applied.':'Edit rejected.'); }catch(e){ toast(esc(e.message)); } }
 async function actJoin(id,verb){ try{ await api('/join-requests/'+htmlId(id)+'/'+verb,{method:'POST'}); PENDINGDATA=null; await loadPending(); renderAdmin(); toast(verb==='grant'?'Access granted.':'Request denied.'); }catch(e){ toast(esc(e.message)); } }
+async function actLink(id,verb){ try{ await api('/link-requests/'+htmlId(id)+'/'+verb,{method:'POST'}); PENDINGDATA=null; await loadFamily(state.familyId); await loadPending(); renderAdmin(); render(); toast(verb==='approve'?'Trees joined.':'Link declined.'); }catch(e){ toast(esc(e.message)); } }
+async function actClaim(id,verb){ try{ await api('/claim-requests/'+htmlId(id)+'/'+verb,{method:'POST'}); PENDINGDATA=null; await loadFamily(state.familyId); await loadPending(); renderAdmin(); toast(verb==='approve'?'Confirmed — they now manage their own record.':'Claim declined.'); }catch(e){ toast(esc(e.message)); } }
 async function actFamilyReq(id,verb){ try{ await api('/family-requests/'+htmlId(id)+'/'+verb,{method:'POST'}); await loadDirectory(); await loadPending(); renderAdmin(); render(); toast(verb==='approve'?'Family created.':'Request declined.'); }catch(e){ toast(esc(e.message)); } }
 async function setRoleRemote(uid,role){ try{ await api('/families/'+encodeURIComponent(state.familyId)+'/members/'+htmlId(uid),{method:'PUT',body:{role}}); MEMBERS=null; renderAdmin(); toast('Role updated.'); }catch(e){ toast(esc(e.message)); } }
 async function inviteRemote(){
@@ -2861,7 +2899,7 @@ async function saveFamilySettings(){
   const pass=$('#fs_pass').value;
   const body={ name:$('#fs_name').value.trim(), crest:$('#fs_crest').value.trim(), side:$('#fs_side').value.trim(),
     desc:$('#fs_desc').value.trim(), visibility:$('#fs_vis').value, privacyLiving:$('#fs_privliv').value,
-    rootId:$('#fs_root').value, pivotId:$('#fs_pivot').value };
+    discoverable:$('#fs_disc').value==='1', rootId:$('#fs_root').value, pivotId:$('#fs_pivot').value };
   if(pass==='-') body.password=''; else if(pass) body.password=pass;
   try{ await api('/families/'+encodeURIComponent(state.familyId),{method:'PATCH',body});
     await loadDirectory(); await loadFamily(state.familyId); renderAdmin(); render(); toast('Family settings saved.'); }
