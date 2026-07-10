@@ -134,7 +134,11 @@ input,textarea,select{font-family:inherit}
 .pv-av{width:60px; height:60px; border-radius:15px; display:grid; place-items:center; font-family:'Fraunces',serif; font-size:25px; color:var(--ink); background:var(--gold); margin-bottom:13px}
 .panel-head h2{font-family:'Fraunces',serif; font-weight:500; font-size:25px; margin:0 40px 6px 0; line-height:1.1}
 .pv-dates{font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--gold)}
-.pv-tag{display:inline-flex; align-items:center; gap:6px; margin-top:11px; padding:5px 11px; border-radius:20px; font-size:11px; letter-spacing:.05em; text-transform:uppercase; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim)}
+.pv-tags{display:flex; flex-wrap:wrap; gap:6px; margin-top:11px}
+.pv-tag{display:inline-flex; align-items:center; gap:6px; margin-top:11px; padding:5px 11px; border-radius:20px; font-size:11px; letter-spacing:.05em; text-transform:uppercase; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim);
+  max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.pv-tags .pv-tag{margin-top:0}
+.pv-tag .dot{flex:none}
 .dot{width:8px; height:8px; border-radius:50%}
 .actions{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:22px}
 .act{display:flex; align-items:center; justify-content:center; gap:7px; padding:10px; border-radius:10px; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim); font-size:12.5px; font-weight:500; transition:.15s}
@@ -142,7 +146,10 @@ input,textarea,select{font-family:inherit}
 .act.full{grid-column:1/-1}
 .act svg{width:15px; height:15px}
 .field{margin-bottom:18px}
-.field label{display:block; font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:7px}
+.field label{display:block; font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:7px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+/* inline label hint: lowercase, quiet, never wraps the label onto two lines */
+.field label .lh{font-style:normal; text-transform:none; letter-spacing:.02em; opacity:.65; margin-left:4px}
 .field p{margin:0; font-size:14px; line-height:1.6; color:var(--bone-dim)}
 .field a{color:var(--verd); text-decoration:none; font-size:13.5px; word-break:break-all}
 .field a:hover{text-decoration:underline}
@@ -157,7 +164,13 @@ input,textarea,select{font-family:inherit}
 .finput{width:100%; padding:11px 13px; background:var(--ink-3); border:1px solid var(--line); border-radius:10px; color:var(--bone); font-size:14px; outline:none; transition:.15s}
 .finput:focus{border-color:var(--gold-soft); box-shadow:0 0 0 3px rgba(201,168,99,.12)}
 textarea.finput{resize:vertical; min-height:74px; line-height:1.5}
-select.finput{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238A8474' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 13px center; padding-right:32px}
+select.finput{appearance:none; cursor:pointer; color-scheme:dark;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.2l4 4 4-4' stroke='%23C9A863' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 13px center; padding-right:34px; transition:border-color .15s}
+select.finput:hover{border-color:var(--gold-soft)}
+select.finput option, select.finput optgroup{background:var(--ink-2); color:var(--bone); font-family:Inter,system-ui,sans-serif}
+html[data-theme="light"] select.finput{color-scheme:light}
+html[data-theme="light"] select.finput option, html[data-theme="light"] select.finput optgroup{background:var(--ink-2); color:var(--bone)}
 .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
 .hint{font-size:12px; color:var(--muted); line-height:1.5; margin:-2px 0 16px}
 .panel-foot{padding:15px 24px; border-top:1px solid var(--line); display:flex; gap:10px}
@@ -459,7 +472,7 @@ const DB = {
 
 /* seed helpers */
 let _pid=0,_uid=0;
-function person(id,familyId,name,born,died,bio,extra={}){ DB.persons[id]={id,familyId,name,born,died,bio,occupation:extra.occ||null,place:extra.place||null,links:extra.links||[],contacts:extra.contacts||[],childOf:extra.childOf||null,childType:extra.childType||null,sex:extra.sex||null,status:extra.status||'approved'}; return id; }
+function person(id,familyId,name,born,died,bio,extra={}){ DB.persons[id]={id,familyId,name,born,died,bio,occupation:extra.occ||null,place:extra.place||null,links:extra.links||[],contacts:extra.contacts||[],childOf:extra.childOf||null,childType:extra.childType||null,sex:extra.sex||null,maiden:extra.maiden||null,status:extra.status||'approved'}; return id; }
 function union(id,a,b,extra={}){ DB.unions[id]={id,a,b,type:extra.type||'marriage',since:extra.since||null,until:extra.until||null,status:extra.status||'approved'}; return id; }
 
 /* ---- Blaker starting point ---- */
@@ -539,6 +552,10 @@ DB.persons['h_vera'].stories=[{id:'st_demo2', title:'Two orchestras', by:'Family
 'h_clara h_ivy h_rose h_florence h_vera h_margaret h_grace h_eleanor h_coral h_heather h_priya h_lin h_femke h_sophie h_amara h_mira h_june h_nell'.split(' ')
   .forEach(id=>{ if(DB.persons[id]) DB.persons[id].sex='F'; });
 DB.persons['b_jack'].sex='M';
+/* birth surnames — the bios already said "Née …" */
+[['h_rose','Cottrell'],['h_clara','Meade'],['h_ivy','Pruett'],['h_margaret','Lane'],['h_grace','Okafor'],
+ ['h_lin','Chen'],['h_femke','de Vries'],['h_priya','Nair'],['h_vera','Harrow'],
+].forEach(([id,m])=>{ if(DB.persons[id]) DB.persons[id].maiden=m; });
 
 /* ================================================================
    state + helpers
@@ -845,7 +862,7 @@ function renderAccount(){
       ${roles?`<div class="divlabel">My families</div>${roles}`:'<p class="hint">No family roles yet — open a family and request access, or request a new line from the directory.</p>'}
       ${ME.user.hasPassword?`<div class="divlabel">Password</div>
         <div class="field"><label>Current password</label><input class="finput" id="cp_cur" type="password" autocomplete="current-password"></div>
-        <div class="field"><label>New password (8+ characters)</label><input class="finput" id="cp_new" type="password" autocomplete="new-password"></div>
+        <div class="field"><label>New password <i class="lh">8+ characters</i></label><input class="finput" id="cp_new" type="password" autocomplete="new-password"></div>
         <button class="btn-ghost" style="width:100%" onclick="changePassword()">Change password</button>
         <p class="hint" style="margin-top:8px">Changing it signs out every other device.</p>`:''}
       <div class="divlabel">Active sessions</div>
@@ -1217,6 +1234,27 @@ function renderDesc(){
       plate(el.append('g').attr('transform',`translate(${d._xs[j]},0)`), p, suffix);
     });
   });
+
+  /* nobody vanishes: people not connected into this tree (e.g. a child whose
+     parents were deleted) sit in their own strip — still clickable, editable,
+     deletable, and re-connectable */
+  const loose=approvedOf(state.familyId).filter(p=>!PLATE_POS[p.id]);
+  if(loose.length){
+    const bb=g.node().getBBox();
+    const left=bb.width?bb.x:-(PW/2), stripY=(bb.height?bb.y+bb.height:0)+120;
+    g.append('text').attr('x',left+PW/2).attr('y',stripY-PH/2-16).attr('text-anchor','middle')
+      .attr('fill','var(--muted)').attr('letter-spacing','.12em')
+      .style('font','500 10px "JetBrains Mono",monospace')
+      .text(('Not connected yet — '+loose.length).toUpperCase());
+    const per=Math.max(1,Math.floor(Math.max(bb.width,PW+30)/(PW+28)));
+    loose.forEach((p,i)=>{
+      const x=left+PW/2+(i%per)*(PW+28), y=stripY+Math.floor(i/per)*(PH+24);
+      const gp=g.append('g').attr('transform',`translate(${x},${y})`);
+      plate(gp,p,'');
+      gp.select('.node-plate rect').attr('stroke-dasharray','5 4');
+      PLATE_POS[p.id]=[x,y];
+    });
+  }
   reveal(); fitView();
 }
 let _clipSeq=0;
@@ -1477,8 +1515,8 @@ function renderHealth(){
     ${issues.length>8?`<div class="hmore">+${issues.length-8} more</div>`:''}</div>`;
 }
 function exportCSV(){
-  const rows=[['Name','Sex','Born','Died','Occupation','Place','Relationship to parents','Note']];
-  approvedOf(state.familyId).forEach(p=>rows.push([p.name,p.sex||'',p.born||'',p.died||'',p.occupation||'',p.place||'',p.childType||'',(p.bio||'').replace(/\r?\n/g,' ')]));
+  const rows=[['Name','Birth surname','Sex','Born','Died','Occupation','Place','Relationship to parents','Note']];
+  approvedOf(state.familyId).forEach(p=>rows.push([p.name,p.maiden||'',p.sex||'',p.born||'',p.died||'',p.occupation||'',p.place||'',p.childType||'',(p.bio||'').replace(/\r?\n/g,' ')]));
   const csv=rows.map(r=>r.map(c=>{ const s=String(c); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\r\n');
   download(`kin-${state.familyId}.csv`, csv, 'text/csv');
   toast(approvedOf(state.familyId).some(isLiving)?'CSV downloaded. It includes living people — share with care.':'CSV downloaded.');
@@ -1510,7 +1548,7 @@ function renderRecords(){
   $('#recTitle').textContent=fam().name;
   const q=state.query.toLowerCase();
   let list=approvedOf(state.familyId);
-  if(q) list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.bio||'').toLowerCase().includes(q));
+  if(q) list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.bio||'').toLowerCase().includes(q)||(p.maiden||'').toLowerCase().includes(q));
   if(state.recFilter==='living') list=list.filter(isLiving);
   else if(state.recFilter==='memory') list=list.filter(p=>!isLiving(p));
   if(state.recSort==='born') list=[...list].sort((a,b)=>(Number(yearOf(a.born))||9999)-(Number(yearOf(b.born))||9999));
@@ -1534,7 +1572,7 @@ function renderRecords(){
       ${cross?`<span class="fam-chip">${esc(DB.families[p.familyId].name)}</span>`:''}
       <div class="av">${avFor(p)}</div>
       <h3>${esc(p.name)}</h3>
-      <div class="dates">${isLiving(p)?'<i class="live"></i>':''}${esc(dates(p))}${partner?' · m. '+esc(partner.name.split(' ')[0]):''}</div>
+      <div class="dates">${isLiving(p)?'<i class="live"></i>':''}${esc(dates(p))}${p.maiden?' · née '+esc(p.maiden):''}${partner?' · m. '+esc(partner.name.split(' ')[0]):''}</div>
       ${(p.occupation||p.place)?`<div class="dates" style="margin:-6px 0 10px">${esc([p.occupation,p.place].filter(Boolean).join(' · '))}</div>`:''}
       <p>${esc(p.bio||'No note recorded yet.')}</p></button>`;
   }).join('') || `<div class="empty">No kin match "${esc(state.query)}".</div>`;
@@ -1747,10 +1785,12 @@ function openPerson(id,opts={}){
   $('#panel').classList.remove('wide');
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button>
     <div class="pv-av">${avFor(p)}</div>
-    <h2>${esc(p.name)}</h2><div class="pv-dates">${esc(dates(p))}${(()=>{const a=ageOf(p); return a==null?'':isLiving(p)?` · age ${a}`:` · lived ${a} years`;})()}</div>
-    <div class="pv-tag">${isLiving(p)?'<i class="dot" style="background:var(--verd)"></i> Living':'In memory'} · ${esc(DB.families[p.familyId].name)} line</div>
-    ${REMOTE&&isLiving(p)&&(DB.families[p.familyId]||{}).privacyLiving==='limited'?'<div class="pv-tag" title="Full birth date, notes, occupation, place, and photo are hidden from non-members">🔒 Living — details members-only</div>':''}
-    ${p.status==='pending'?'<div class="pv-tag" style="border-color:var(--rust);color:var(--rust)">Pending approval</div>':''}`;
+    <h2>${esc(p.name)}</h2><div class="pv-dates">${esc(dates(p))}${p.maiden?` · née ${esc(p.maiden)}`:''}${(()=>{const a=ageOf(p); return a==null?'':isLiving(p)?` · age ${a}`:` · lived ${a} years`;})()}</div>
+    <div class="pv-tags">
+      <span class="pv-tag">${isLiving(p)?'<i class="dot" style="background:var(--verd)"></i> Living':'In memory'} · ${esc(DB.families[p.familyId].name)} line</span>
+      ${REMOTE&&isLiving(p)&&(DB.families[p.familyId]||{}).privacyLiving==='limited'?'<span class="pv-tag" title="Full birth date, notes, occupation, place, and photo are hidden from non-members">🔒 Members-only details</span>':''}
+      ${p.status==='pending'?'<span class="pv-tag" style="border-color:var(--rust);color:var(--rust)">Pending approval</span>':''}
+    </div>`;
 
   let body=`<div class="actions">
     <button class="act" onclick="openAdd('child','${htmlId(id)}')">${plus()} Add child</button>
@@ -1843,8 +1883,8 @@ function openAdd(relation, anchorId){
       <option value="marriage">Marriage</option><option value="partnership">Partnership</option>
       <option value="divorced">Former marriage — divorced</option><option value="separated">Separated</option></select></div>
     <div class="row2">
-      <div class="field"><label>Together since (optional)</label><input class="finput" id="f_usince" placeholder="1972"></div>
-      <div class="field"><label>Until (optional)</label><input class="finput" id="f_uuntil" placeholder="—"></div>
+      <div class="field"><label>Since <i class="lh">optional</i></label><input class="finput" id="f_usince" placeholder="1972"></div>
+      <div class="field"><label>Until <i class="lh">optional</i></label><input class="finput" id="f_uuntil" placeholder="—"></div>
     </div>`:'';
   $('#panel').classList.remove('wide');
   $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>${esc(titles[relation])}</h2><div class="pv-dates" style="color:var(--muted)">to the ${esc(fam().name)} record</div>`;
@@ -1853,17 +1893,20 @@ function openAdd(relation, anchorId){
     <div class="field"><label>Full name</label><input class="finput" id="f_name" placeholder="e.g. Mary Blaker"></div>
     ${childBits}${partnerBits}
     <div class="row2">
-      <div class="field"><label>Sex (optional)</label><select class="finput" id="f_sex">
+      <div class="field"><label>Sex <i class="lh">optional</i></label><select class="finput" id="f_sex">
         <option value="">Not recorded</option><option value="F">Female</option><option value="M">Male</option><option value="X">Other</option></select></div>
-      <div class="field"><label>Born</label><input class="finput" id="f_born" placeholder="March 8, 1990"></div>
+      <div class="field"><label>Birth surname <i class="lh">née</i></label><input class="finput" id="f_maiden" placeholder="if different"></div>
     </div>
     <div class="row2">
-      <div class="field"><label>Died (blank if living)</label><input class="finput" id="f_died" placeholder="—"></div>
-      <div class="field"><label>Occupation (optional)</label><input class="finput" id="f_occ" placeholder="Clockmaker"></div>
+      <div class="field"><label>Born</label><input class="finput" id="f_born" placeholder="March 8, 1990"></div>
+      <div class="field"><label>Died <i class="lh">blank if living</i></label><input class="finput" id="f_died" placeholder="—"></div>
     </div>
-    <div class="field"><label>Place (optional)</label><input class="finput" id="f_place" placeholder="Lewes, Sussex"></div>
-    <div class="field"><label>Note (optional)</label><textarea class="finput" id="f_bio" placeholder="A line or two…"></textarea></div>
-    <div class="field"><label>Link or contact (optional)</label><input class="finput" id="f_link" placeholder="https://…  or  name@email.com"></div>
+    <div class="row2">
+      <div class="field"><label>Occupation <i class="lh">optional</i></label><input class="finput" id="f_occ" placeholder="Clockmaker"></div>
+      <div class="field"><label>Place <i class="lh">optional</i></label><input class="finput" id="f_place" placeholder="Lewes, Sussex"></div>
+    </div>
+    <div class="field"><label>Note <i class="lh">optional</i></label><textarea class="finput" id="f_bio" placeholder="A line or two…"></textarea></div>
+    <div class="field"><label>Link or contact <i class="lh">optional</i></label><input class="finput" id="f_link" placeholder="https://…  or  name@email.com"></div>
     <input type="hidden" id="f_rel" value="${esc(relation)}"><input type="hidden" id="f_anchor" value="${htmlId(anchorId||'')}">
     <div id="f_dupe"></div>
     <p class="hint">${REMOTE&&!ME.user?'Sign in to submit — records belong to real accounts here.':canEditHere()?'Your additions appear in the tree straight away.':'Submissions join the approval queue — a family admin reviews before it appears.'}</p>`;
@@ -1974,6 +2017,7 @@ async function submitKin(){
   if($('#f_died').value.trim() && died==null){ toast('Died must be a year or date.'); return; }
   const dp=dateProblem(born,died); if(dp){ toast(esc(dp)); return; }
   const sex=$('#f_sex')?.value||null;
+  const maiden=($('#f_maiden')?.value||'').trim()||null;
   /* child options: existing partner id | '__new' | '' (unknown) */
   const withVal=$('#f_with')?$('#f_with').value:'';
   const newPartnerName=withVal==='__new'?($('#f_pname')?.value||'').trim():'';
@@ -1999,7 +2043,7 @@ async function submitKin(){
         body:{name, born:born==null?null:String(born), died:died==null?null:String(died), bio:$('#f_bio').value.trim(),
           occupation:$('#f_occ').value.trim(), place:$('#f_place').value.trim(),
           links:url?[url]:[], contacts:email?[email]:[], relation:rel||'root', anchorId:anchorId||null,
-          sex, childType, withId:(withVal&&withVal!=='__new')?withVal:null, newPartnerName:newPartnerName||null,
+          sex, maiden, childType, withId:(withVal&&withVal!=='__new')?withVal:null, newPartnerName:newPartnerName||null,
           unionType, since:uSince, until:uUntil}});
       closePanel();
       await loadFamily(state.familyId); await loadPending();
@@ -2014,7 +2058,7 @@ async function submitKin(){
   const np={ id, familyId:state.familyId, name, born,
     died, bio:$('#f_bio').value.trim(),
     occupation:$('#f_occ').value.trim()||null, place:$('#f_place').value.trim()||null,
-    links:url?[url]:[], contacts:email?[email]:[], childOf:null, childType:null, sex,
+    links:url?[url]:[], contacts:email?[email]:[], childOf:null, childType:null, sex, maiden,
     status: state.admin?'approved':'pending' };
   DB.persons[id]=np;
   // wire the relationship
@@ -2060,10 +2104,11 @@ function openEdit(id){
     <div class="field"><label>Full name</label><input class="finput" id="e_name" value="${esc(p.name)}"></div>
     <div class="row2"><div class="field"><label>Sex</label><select class="finput" id="e_sex">
       ${[['','Not recorded'],['F','Female'],['M','Male'],['X','Other']].map(([v,l])=>`<option value="${v}"${(p.sex||'')===v?' selected':''}>${l}</option>`).join('')}</select></div>
-    <div class="field"><label>Born</label><input class="finput" id="e_born" value="${esc(p.born||'')}"></div></div>
-    <div class="row2"><div class="field"><label>Died</label><input class="finput" id="e_died" value="${esc(p.died||'')}"></div>
-    <div class="field"><label>Occupation</label><input class="finput" id="e_occ" value="${esc(p.occupation||'')}"></div></div>
-    <div class="field"><label>Place</label><input class="finput" id="e_place" value="${esc(p.place||'')}"></div>
+    <div class="field"><label>Birth surname <i class="lh">née</i></label><input class="finput" id="e_maiden" value="${esc(p.maiden||'')}" placeholder="if different"></div></div>
+    <div class="row2"><div class="field"><label>Born</label><input class="finput" id="e_born" value="${esc(p.born||'')}"></div>
+    <div class="field"><label>Died <i class="lh">blank if living</i></label><input class="finput" id="e_died" value="${esc(p.died||'')}"></div></div>
+    <div class="row2"><div class="field"><label>Occupation</label><input class="finput" id="e_occ" value="${esc(p.occupation||'')}"></div>
+    <div class="field"><label>Place</label><input class="finput" id="e_place" value="${esc(p.place||'')}"></div></div>
     ${p.childOf?`<div class="field"><label>Relationship to parents</label><select class="finput" id="e_ctype">
       ${[['','Biological'],['adopted','Adopted'],['step','Step'],['foster','Foster']].map(([v,l])=>`<option value="${v}"${(p.childType||'')===v?' selected':''}>${l}</option>`).join('')}</select></div>`:''}
     <div class="field"><label>Note</label><textarea class="finput" id="e_bio">${esc(p.bio||'')}</textarea></div>
@@ -2082,7 +2127,7 @@ async function saveEdit(id){
       const d=await api('/persons/'+encodeURIComponent(id),{method:'PATCH',
         body:{name:$('#e_name').value.trim(), born:born==null?'':String(born), died:died==null?'':String(died),
           bio:$('#e_bio').value.trim(), occupation:$('#e_occ').value.trim(), place:$('#e_place').value.trim(),
-          sex:$('#e_sex').value, childType:$('#e_ctype')?$('#e_ctype').value:undefined}});
+          maiden:$('#e_maiden').value.trim(), sex:$('#e_sex').value, childType:$('#e_ctype')?$('#e_ctype').value:undefined}});
       await loadFamily(state.familyId);
       toast(d.applied ? 'Record updated.' : 'Edit submitted — a family admin will review it.');
       if(P(id)) openPerson(id); else closePanel();
@@ -2092,7 +2137,8 @@ async function saveEdit(id){
   }
   const p=P(id); p.name=$('#e_name').value.trim()||p.name; p.born=born; p.died=died; p.bio=$('#e_bio').value.trim();
   p.occupation=$('#e_occ').value.trim()||null; p.place=$('#e_place').value.trim()||null;
-  p.sex=$('#e_sex').value||null; if($('#e_ctype')) p.childType=$('#e_ctype').value||null;
+  p.sex=$('#e_sex').value||null; p.maiden=$('#e_maiden').value.trim()||null;
+  if($('#e_ctype')) p.childType=$('#e_ctype').value||null;
   saveDB(); toast(`${strong(p.name)} updated.`); openPerson(id); render();
 }
 /* ---- person photos: resized in the browser, stored behind family access ---- */
@@ -2318,7 +2364,7 @@ function mergePersonsLocal(srcId, tgtId){
     kept.since=kept.since||u.since; kept.until=kept.until||u.until;
     delete DB.unions[u.id];
   });
-  ['childOf','childType','born','died','bio','occupation','place','sex'].forEach(k=>{ if(tgt[k]==null||tgt[k]==='') tgt[k]=src[k]??tgt[k]; });
+  ['childOf','childType','born','died','bio','occupation','place','sex','maiden'].forEach(k=>{ if(tgt[k]==null||tgt[k]==='') tgt[k]=src[k]??tgt[k]; });
   if(!tgt.photoData && src.photoData) tgt.photoData=src.photoData;
   else if(src.photoData) (tgt.gallery=tgt.gallery||[]).push({id:'g'+Date.now(), dataUrl:src.photoData, caption:'Portrait from merged record'});
   if(src.gallery&&src.gallery.length) tgt.gallery=[...(tgt.gallery||[]),...src.gallery];
@@ -2407,7 +2453,7 @@ function parseGEDCOM(text){
     const lvl=Number(m[1]), xref=m[2], tag=m[3].toUpperCase(), val=(m[4]||'').trim();
     if(lvl===0){
       cur=null; curType=null; ctx=[];
-      if(xref && tag==='INDI'){ cur=inds[xref]={id:xref, name:'', sex:null, born:null, died:null, dead:false, place:null, occ:null, notes:[], famc:null, pedi:null}; curType='I'; }
+      if(xref && tag==='INDI'){ cur=inds[xref]={id:xref, name:'', sex:null, maiden:null, born:null, died:null, dead:false, place:null, occ:null, notes:[], famc:null, pedi:null}; curType='I'; }
       else if(xref && tag==='FAM'){ cur=fams[xref]={id:xref, husb:null, wife:null, type:'marriage', since:null, until:null}; curType='F'; }
       continue;
     }
@@ -2416,6 +2462,7 @@ function parseGEDCOM(text){
     if(curType==='I'){
       if(lvl===1){
         if(tag==='NAME'&&!cur.name) cur.name=val.replace(/\//g,'').replace(/\s+/g,' ').trim();
+        else if(tag==='NAME'&&cur.name&&!cur.maiden){ const mm=val.match(/\/([^/]+)\//); if(mm) cur.maiden=mm[1].trim(); }
         else if(tag==='SEX') cur.sex=(val==='M'||val==='F')?val:null;
         else if(tag==='FAMC') cur.famc=val;
         else if(tag==='OCCU') cur.occ=val||null;
@@ -2457,7 +2504,7 @@ async function importGEDCOM(file){
     veil(true);
     try{
       const d=await api('/families/'+encodeURIComponent(state.familyId)+'/import',{method:'POST',body:{
-        persons:pl.map(p=>({tmp:p.id, name:p.name||'Unknown', sex:p.sex, born:p.born, died:died(p),
+        persons:pl.map(p=>({tmp:p.id, name:p.name||'Unknown', sex:p.sex, maiden:p.maiden, born:p.born, died:died(p),
           bio:p.notes.join('\n').slice(0,1000)||null, occupation:p.occ, place:p.place, childOfTmp:p.famc, childType:ctype(p)})),
         unions:ul.map(u=>({tmp:u.id, aTmp:u.husb, bTmp:u.wife, type:u.type, since:u.since, until:u.until})),
       }});
@@ -2474,7 +2521,7 @@ async function importGEDCOM(file){
   ul.forEach(u=>{ DB.unions[umap[u.id]]={id:umap[u.id], a:pmap[u.husb]||null, b:pmap[u.wife]||null,
     type:['marriage','partnership','divorced','separated'].includes(u.type)?u.type:'marriage', since:u.since||null, until:u.until||null, status:'approved'}; });
   pl.forEach(p=>{ DB.persons[pmap[p.id]]={id:pmap[p.id], familyId:state.familyId, name:p.name||'Unknown', born:p.born||null, died:died(p),
-    bio:p.notes.join('\n').slice(0,1000)||'', occupation:p.occ||null, place:p.place||null, sex:p.sex, links:[], contacts:[],
+    bio:p.notes.join('\n').slice(0,1000)||'', occupation:p.occ||null, place:p.place||null, sex:p.sex, maiden:p.maiden||null, links:[], contacts:[],
     childOf:(p.famc&&umap[p.famc])||null, childType:ctype(p), status:'approved'}; });
   saveDB(); render(); toast(`Imported ${strong(pl.length)} people and ${ul.length} unions.`);
 }
@@ -2521,8 +2568,8 @@ function openUnion(uid){
     <div class="field"><label>Union type</label><select class="finput" id="u_type">
       ${['marriage','partnership','divorced','separated'].map(t=>`<option value="${t}"${u.type===t?' selected':''}>${UNION_WORD[t]}</option>`).join('')}</select></div>
     <div class="row2">
-      <div class="field"><label>Together since</label><input class="finput" id="u_since" value="${esc(u.since||'')}" placeholder="1972"></div>
-      <div class="field"><label>Until</label><input class="finput" id="u_until" value="${esc(u.until||'')}" placeholder="—"></div>
+      <div class="field"><label>Since <i class="lh">year</i></label><input class="finput" id="u_since" value="${esc(u.since||'')}" placeholder="1972"></div>
+      <div class="field"><label>Until <i class="lh">if ended</i></label><input class="finput" id="u_until" value="${esc(u.until||'')}" placeholder="—"></div>
     </div>
     <p class="hint">“Divorced” and “Separated” keep the union in the tree — the children still descend from it — but draw it as ended.</p>`;
   else body+=`<div class="field"><label>Recorded as</label><p>${esc(UNION_WORD[u.type]||'Union')}${unionYears(u)?' · '+esc(unionYears(u)):''}</p></div>`;
@@ -2567,7 +2614,14 @@ async function deleteUnion(uid){
 /* ---- delete (admin) — detaches unions and re-roots the family if needed ---- */
 async function deletePerson(id){
   const p=P(id); if(!p || !isAdminHere()) return;
-  if(settings.confirmDanger && !(await ask(`Move ${p.name} to the Trash? Nothing is lost — you can restore them from the admin console’s Trash tab.`,{title:'Move to Trash', confirmLabel:'Move to Trash'}))) return;
+  const dangling=childrenOf(id).filter(k=>{
+    if(k.status!=='approved') return false;
+    const u=U(k.childOf); if(!u) return false;
+    const other=partnerIn(id,u);
+    return !other || !P(other) || P(other).status!=='approved';
+  }).length;
+  const extra=dangling?` ${dangling} child${dangling>1?'ren':''} will move to the tree’s “Not connected” strip until re-linked.`:'';
+  if(settings.confirmDanger && !(await ask(`Move ${p.name} to the Trash? Nothing is lost — you can restore them from the admin console’s Trash tab.${extra}`,{title:'Move to Trash', confirmLabel:'Move to Trash'}))) return;
   if(REMOTE){
     try{
       await api('/persons/'+encodeURIComponent(id),{method:'DELETE'});
@@ -2625,7 +2679,7 @@ function renderDirectory(){
       <div class="field"><label>Family name</label><input class="finput" id="nf_name" placeholder="e.g. Davison"></div>
       <div class="field"><label>This line is…</label><input class="finput" id="nf_side" placeholder="Paternal line, Maternal line…"></div>
       <div class="field"><label>Visibility</label><select class="finput" id="nf_vis"><option value="public">Public — anyone can browse</option><option value="private">Private — password to open</option></select></div>
-      <div class="field"><label>A note for the admin (optional)</label><textarea class="finput" id="nf_note" placeholder="Why you’re starting this line…"></textarea></div>
+      <div class="field"><label>Note for the admin <i class="lh">optional</i></label><textarea class="finput" id="nf_note" placeholder="Why you’re starting this line…"></textarea></div>
       <button class="btn-fill" style="width:100%" onclick="requestFamily()">Request this family</button>`;
   }
 }
@@ -2769,7 +2823,7 @@ async function renderAdminRemote(){
         <option value="limited" ${f.privacyLiving!=='full'?'selected':''}>Members only — others see name + birth year</option>
         <option value="full" ${f.privacyLiving==='full'?'selected':''}>Everyone who can open this family</option></select></div>
       <p class="hint" style="margin-top:-8px">“Members only” hides full birth dates, notes, occupation, place, and photos of living people from anyone without a role here.</p>
-      <div class="field"><label>Family password (blank = keep, "-" = remove)</label><input class="finput" id="fs_pass" type="password" placeholder="${f.hasPassword?'••••••  (set)':'not set'}" autocomplete="new-password"></div>
+      <div class="field"><label>Family password <i class="lh">blank keeps · “-” removes</i></label><input class="finput" id="fs_pass" type="password" placeholder="${f.hasPassword?'••••••  (set)':'not set'}" autocomplete="new-password"></div>
       <div class="row2">
         <div class="field"><label>Tree root</label><select class="finput" id="fs_root">${approvedOf(f.id).map(p=>`<option value="${htmlId(p.id)}" ${p.id===f.rootId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
         <div class="field"><label>Ancestor focus</label><select class="finput" id="fs_pivot">${approvedOf(f.id).map(p=>`<option value="${htmlId(p.id)}" ${p.id===f.pivotId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
@@ -2968,6 +3022,7 @@ function exportGEDCOM(){
   ps.forEach(p=>{
     const parts=String(p.name).trim().split(/\s+/); const sur=parts.length>1?parts.pop():'';
     L.push(`0 ${iref[p.id]} INDI`, `1 NAME ${parts.join(' ')} /${sur}/`);
+    if(p.maiden) L.push(`1 NAME ${parts.join(' ')} /${p.maiden}/`, '2 TYPE maiden');
     if(p.sex==='F'||p.sex==='M') L.push(`1 SEX ${p.sex}`);
     if(p.born!=null || p.place){ L.push('1 BIRT'); if(p.born!=null) L.push(`2 DATE ${p.born}`); if(p.place) L.push(`2 PLAC ${p.place}`); }
     if(p.died!=null){ L.push('1 DEAT', `2 DATE ${p.died}`); }
