@@ -4,7 +4,7 @@
 <!-- Kin - genealogy prototype (graph model: persons + unions). Single file, in-memory. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://apis.google.com; frame-src 'self' https://epoch-d1d71.firebaseapp.com https://accounts.google.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://apis.google.com; frame-src 'self' https://epoch-d1d71.firebaseapp.com https://accounts.google.com; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="Kin — a family record. Browse genealogy as a graph: descendant trees, ancestor charts, and a relationship finder.">
 <meta name="color-scheme" content="dark light">
@@ -14,6 +14,8 @@
 <meta property="og:image" content="./Kin.png">
 <title>Kin — Family Record</title>
 <link rel="icon" href="./Kin.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./Kin.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -63,7 +65,7 @@ input,textarea,select{font-family:inherit}
   background:linear-gradient(180deg,var(--ink-2),var(--ink)); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); padding:6px}
 .search-results.show{display:block}
 .srow{display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; text-align:left; padding:9px 11px; border-radius:8px}
-.srow:hover{background:var(--ink-3)}
+.srow:hover,.srow.active{background:var(--ink-3)}
 .srow .sn{font-size:13.5px; color:var(--bone)}
 .srow .sf{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted)}
 .iconbtn{position:relative; width:38px; height:38px; border-radius:10px; display:grid; place-items:center; background:var(--ink-3); border:1px solid var(--line); color:var(--bone-dim); transition:.18s}
@@ -262,8 +264,25 @@ select.finput{appearance:none; background-image:url("data:image/svg+xml,%3Csvg x
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 .toast b{color:var(--gold)}
 
+/* ---------- loading veil ---------- */
+.loadveil{position:fixed; inset:64px 0 0 0; z-index:30; display:none; place-items:center; background:rgba(13,14,17,.35); backdrop-filter:blur(2px)}
+.loadveil.show{display:grid}
+.loadveil .spin{width:38px; height:38px; border-radius:50%; border:2.5px solid var(--line); border-top-color:var(--gold); animation:kspin .8s linear infinite}
+@keyframes kspin{to{transform:rotate(360deg)}}
+html[data-theme="light"] .loadveil{background:rgba(243,238,226,.45)}
+
+/* ---------- scrollbars ---------- */
+.panel-body::-webkit-scrollbar,.records::-webkit-scrollbar,.search-results::-webkit-scrollbar,.modal::-webkit-scrollbar{width:9px}
+.panel-body::-webkit-scrollbar-thumb,.records::-webkit-scrollbar-thumb,.search-results::-webkit-scrollbar-thumb,.modal::-webkit-scrollbar-thumb{background:var(--ink-3); border-radius:5px; border:2px solid transparent; background-clip:content-box}
+.panel-body::-webkit-scrollbar-thumb:hover,.records::-webkit-scrollbar-thumb:hover{background:var(--gold-soft); border:2px solid transparent; background-clip:content-box}
+
 @media (max-width:760px){ .switcher,.wordmark .sub{display:none} .search{width:110px} .hintchip{display:none}
-  .topbar{gap:8px; padding:0 10px} .btn-primary{padding:9px 11px} .records{padding:118px 16px 110px} }
+  .topbar{gap:8px; padding:0 10px} .btn-primary{padding:9px 11px} .records{padding:118px 16px 110px}
+  .dock{left:10px; right:10px; bottom:12px; gap:8px}
+  .viewtoggle button{padding:7px 9px; font-size:11.5px}
+  .panel{width:100vw; max-width:100vw}
+  .pgal{grid-template-columns:repeat(3,1fr)}
+  .lb-nav{width:38px; height:38px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
 
 /* ---------- configurable appearance (settings) ---------- */
@@ -292,6 +311,9 @@ html[data-anim="off"] *{animation:none!important; transition:none!important}
 .statchips{display:flex; gap:8px; flex-wrap:wrap; max-width:1200px; margin:0 auto 20px}
 .statchips span{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); background:var(--ink-2); border:1px solid var(--line); padding:6px 11px; border-radius:8px}
 .statchips b{color:var(--gold); font-weight:500}
+.histo{display:inline-flex!important; align-items:flex-end; gap:2px; padding:5px 11px 6px!important}
+.histo i{display:block; width:5px; min-height:2px; background:var(--gold-soft); border-radius:1px; transition:.15s}
+.histo i:hover{background:var(--gold)}
 
 /* ---------- welcome (first visit) ---------- */
 .welcome{position:fixed; inset:0; z-index:55; display:none; place-items:center; padding:24px; overflow:auto;
@@ -382,6 +404,7 @@ html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 
 <aside class="panel" id="panel" role="complementary"><div class="panel-head" id="panelHead"></div><div class="panel-body" id="panelBody"></div><div class="panel-foot" id="panelFoot" style="display:none"></div></aside>
 <div class="scrim" id="scrim"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="loadveil" id="loadveil" aria-hidden="true"><div class="spin"></div></div>
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer">
   <button class="lb-close" onclick="closeLightbox()" aria-label="Close">✕</button>
   <button class="lb-nav" id="lbPrev" style="left:18px" onclick="stepLightbox(-1)" aria-label="Previous">‹</button>
@@ -770,7 +793,7 @@ async function saveProfile(){
   catch(e){ toast(esc(e.message)); }
 }
 async function signOutEverywhere(){
-  if(settings.confirmDanger && !confirm('Sign out on every device and browser where you are logged in?')) return;
+  if(settings.confirmDanger && !(await ask('Sign out on every device and browser where you are logged in?',{title:'Sign out everywhere', confirmLabel:'Sign out everywhere'}))) return;
   try{ await api('/auth/logout-all',{method:'POST'}); }catch{}
   if(fbAuth) fbAuth.signOut().catch(()=>{});
   ME={user:null,memberships:[],grants:[]};
@@ -998,6 +1021,47 @@ const passwordDigest = async (fid,password)=>{
 
 function toast(html){ const t=$('#toast'); t.innerHTML=html; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2600); }
 
+/* ---- styled confirmation (replaces the browser's confirm()) ---- */
+let _askCancel=null;
+function ask(message, opts={}){
+  const {title='Are you sure?', confirmLabel='Confirm', danger=true}=opts;
+  return new Promise(res=>{
+    const done=v=>{ _askCancel=null; $('#scrim').classList.remove('show'); res(v); };
+    _askCancel=()=>done(false);
+    $('#modal').innerHTML=`
+      <div class="clasp" style="${danger?'border-color:var(--rust);color:var(--rust)':''}">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.8 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0z"/><path d="M12 9v5"/><circle cx="12" cy="17.4" r=".6" fill="currentColor"/></svg>
+      </div>
+      <h2>${esc(title)}</h2><p class="sub">${esc(message)}</p>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        <button class="btn-ghost" id="askNo">Cancel</button>
+        <button class="btn-fill" id="askYes" ${danger?'style="background:var(--rust);color:#fff"':''}>${esc(confirmLabel)}</button>
+      </div>`;
+    $('#scrim').classList.add('show');
+    $('#askNo').onclick=()=>done(false);
+    $('#askYes').onclick=()=>done(true);
+    setTimeout(()=>$('#askYes')?.focus(),90);
+  });
+}
+
+/* ---- shortcuts & tips ---- */
+const KIN_VER='2026.07.09';
+function openHelp(){
+  const row=(k,l)=>`<div class="setrow"><div class="sl">${l}</div><span class="mono" style="font-size:11px;color:var(--gold);background:var(--ink);border:1px solid var(--line);padding:3px 8px;border-radius:6px;white-space:nowrap">${k}</span></div>`;
+  $('#modal').innerHTML=`
+    <div class="clasp"><span style="font-family:'Fraunces',serif;font-size:22px">?</span></div>
+    <h2>Shortcuts & tips</h2><p class="sub">The fast way around the record.</p>
+    ${row('/','Search everyone')}
+    ${row('1 – 5','Descendants · Ancestors · Timeline · Photos · Records')}
+    ${row('F','Fit the chart to the window')}
+    ${row('← →','Previous / next photo in the viewer')}
+    ${row('Esc','Close panels, menus, and viewers')}
+    ${row('Right-click','Quick actions on any person, union bar, or the canvas')}
+    ${row('Drag','Move a family group in the descendant tree')}
+    <button class="btn-fill" style="width:100%;margin-top:16px" onclick="closeGate()">Got it</button>`;
+  $('#scrim').classList.add('show');
+}
+
 /* svg + zoom */
 const svg=d3.select('#canvas'); let g=svg.append('g');
 const zoom=d3.zoom().scaleExtent([.25,2.8]).on('zoom',e=>g.attr('transform',e.transform));
@@ -1152,6 +1216,11 @@ let _clipSeq=0;
 function plate(sel,p,suffix){
   const gg=sel.attr('class','node-g').attr('data-pid',p.id).on('click',(e)=>{e.stopPropagation(); openPerson(p.id);})
     .on('contextmenu',(e)=>personCtx(e,p.id));
+  /* touch: long-press opens the same quick-actions menu */
+  let _lp=null;
+  gg.on('touchstart',(e)=>{ const t=e.touches[0];
+    _lp=setTimeout(()=>personCtx({preventDefault(){},stopPropagation(){},clientX:t.clientX,clientY:t.clientY}, p.id),550); })
+    .on('touchmove touchend touchcancel',()=>clearTimeout(_lp));
   const pl=gg.append('g').attr('class','node-plate');
   pl.append('rect').attr('x',-PW/2).attr('y',-PH/2).attr('width',PW).attr('height',PH).attr('rx',11)
     .attr('fill','url(#plateGrad)').attr('stroke','var(--line)').attr('stroke-width',1).attr('filter','url(#plateShadow)');
@@ -1405,6 +1474,17 @@ function familyStats(fid){
   const stories=ps.reduce((n,p)=>n+(REMOTE?(p.storiesCount||0):(p.stories||[]).length),0);
   return {total:ps.length, living, span, avg, unions:uset.size, photos, stories};
 }
+/* births per decade, as a tiny inline chart in the stats row */
+function decadeChart(fid){
+  const ys=approvedOf(fid).map(p=>Number(yearOf(p.born))).filter(y=>y>0);
+  if(ys.length<5) return '';
+  const d0=Math.floor(Math.min(...ys)/10), d1=Math.floor(Math.max(...ys)/10);
+  if(d1-d0<2 || d1-d0>30) return '';
+  const counts=[]; for(let d=d0; d<=d1; d++) counts.push(ys.filter(y=>Math.floor(y/10)===d).length);
+  const max=Math.max(...counts);
+  return `<span class="histo" title="Births per decade">${counts.map((c,i)=>
+    `<i style="height:${Math.max(2,Math.round(c/max*18))}px" title="${(d0+i)*10}s — ${c} born"></i>`).join('')}</span>`;
+}
 function renderRecords(){
   $('#recTitle').textContent=fam().name;
   const q=state.query.toLowerCase();
@@ -1423,7 +1503,8 @@ function renderRecords(){
   const st=familyStats(state.familyId);
   $('#recStats').innerHTML=[`<b>${st.total}</b> kin`,`<b>${st.living}</b> living`,`<b>${st.unions}</b> unions`,
     st.span?`born <b>${esc(st.span)}</b>`:null, st.avg?`avg lifespan <b>${st.avg}</b>`:null,
-    st.photos?`<b>${st.photos}</b> photos`:null, st.stories?`<b>${st.stories}</b> stories`:null].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
+    st.photos?`<b>${st.photos}</b> photos`:null, st.stories?`<b>${st.stories}</b> stories`:null].filter(Boolean).map(s=>`<span>${s}</span>`).join('')
+    + decadeChart(state.familyId);
   renderHealth();
   $('#recGrid').innerHTML = list.map(p=>{
     const partner=primaryPartner(p.id);
@@ -1450,9 +1531,11 @@ function render(){
     return;
   }
   $('#famTitle').textContent=f.name;
+  document.title=`${f.name} — Kin`;
+  const backChip=(label,fn)=>`<button style="pointer-events:auto;cursor:pointer;color:var(--gold);background:none;border:none;font:inherit;padding:0" onclick="${fn}">⟲ ${label}</button>`;
   let crumb='', meta='';
-  if(state.view==='desc'){ const r=P(state.descRoot||descRootOf(f.id))||approvedOf(f.id)[0]; crumb=state.descRoot?'Descendants of':'Family tree —'; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span><span>${esc(f.side)}</span>`; $('#famTitle').textContent=r?r.name:f.name; }
-  else if(state.view==='anc'){ const r=P(state.ancFocus||f.pivotId)||approvedOf(f.id)[0]; crumb='Ancestors of'; $('#famTitle').textContent=r?r.name:f.name; meta=`<span>${esc(f.name)} line</span><span>generations climb rightward</span>`; }
+  if(state.view==='desc'){ const r=P(state.descRoot||descRootOf(f.id))||approvedOf(f.id)[0]; crumb=state.descRoot?'Descendants of':'Family tree —'; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span><span>${esc(f.side)}</span>${state.descRoot?`<span>${backChip('full tree',"state.descRoot=null;render()")}</span>`:''}`; $('#famTitle').textContent=r?r.name:f.name; }
+  else if(state.view==='anc'){ const r=P(state.ancFocus||f.pivotId)||approvedOf(f.id)[0]; crumb='Ancestors of'; $('#famTitle').textContent=r?r.name:f.name; meta=`<span>${esc(f.name)} line</span><span>generations climb rightward</span>${state.ancFocus&&state.ancFocus!==f.pivotId?`<span>${backChip('default focus',"state.ancFocus=null;render()")}</span>`:''}`; }
   else if(state.view==='time'){ const st=familyStats(f.id); crumb='Timeline of'; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin</span>${st.span?`<span>born ${esc(st.span)}</span>`:''}`; }
   else if(state.view==='photos'){ crumb='Photographs —'; $('#famTitle').textContent=f.name; meta=`<span>the family gallery</span>`; }
   else { crumb=f.name; $('#famTitle').textContent=f.name; meta=`<span><b>${approvedOf(f.id).length}</b> kin recorded</span>`; }
@@ -1523,6 +1606,7 @@ function buildSwitcher(){
   }).join('') + (more>0?`<button class="fam-btn" data-fam="__more">+${more} more…</button>`:'');
   $('#switcher').querySelectorAll('.fam-btn').forEach(b=>b.onclick=()=>{ if(b.dataset.fam==='__more') openDirectory(); else switchFamily(b.dataset.fam); });
 }
+const veil=on=>$('#loadveil').classList.toggle('show',!!on);
 async function switchFamily(id){
   if(id===state.familyId) return;
   const f=DB.families[id];
@@ -1530,7 +1614,7 @@ async function switchFamily(id){
   if(!hasAccess(id)){ openGate(id); return; }
   state.familyId=id; state.descRoot=null; state.ancFocus=null; state.query=''; $('#search').value=''; closePanel();
   try{ localStorage.setItem('kin.lastFamily', id); }catch{}
-  if(REMOTE && !FAMDATA[id]){ toast(`Opening ${strong(f.name)}…`); try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
+  if(REMOTE && !FAMDATA[id]){ veil(true); try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } finally{ veil(false); } }
   if(REMOTE){ PENDINGDATA=null; MEMBERS=null; AUDITL=null; loadPending(); }
   render();
 }
@@ -1608,6 +1692,8 @@ function canvasCtx(e){
     state.view!=='anc'?{l:'Ancestors view', i:'↑', fn:()=>{ state.view='anc'; render(); }}:null,
     state.view!=='time'?{l:'Timeline view', i:'—', fn:()=>{ state.view='time'; render(); }}:null,
     {l:'Records view', i:'≡', fn:()=>{ state.view='records'; render(); }},
+    '—',
+    {l:'Shortcuts & tips', i:'?', fn:openHelp},
   ]);
 }
 function openPanelBare(){ $('#panel').classList.remove('wide'); $('#panel').classList.add('open'); }
@@ -1632,6 +1718,7 @@ function showInTree(pid){
    ================================================================ */
 function openPerson(id,opts={}){
   const p=P(id); if(!p) return;
+  noteRecent(id);
   const partner=primaryPartner(id), parents=parentsOf(id), kids=childrenOf(id).filter(k=>k.status==='approved');
   const canEdit = REMOTE ? canEditHere() : state.admin;
   const canDelete = isAdminHere();
@@ -1690,11 +1777,12 @@ function openPerson(id,opts={}){
   }
   const gcount = REMOTE ? (p.galleryCount||0) : (p.gallery||[]).length;
   const scount = REMOTE ? (p.storiesCount||0) : (p.stories||[]).length;
+  const wait='<div class="empty" style="padding:8px 0 4px">…</div>';
   body+=`<div class="field"><label>Gallery${gcount?` · ${gcount}`:''}</label>
-    <div class="pgal" id="pv_gallery"></div>
+    <div class="pgal" id="pv_gallery">${REMOTE?wait:''}</div>
     ${canEdit?`<button class="act" style="width:100%" onclick="addGalleryPhoto('${htmlId(id)}')">＋ Add photo</button>`:''}</div>`;
   body+=`<div class="field"><label>Stories${scount?` · ${scount}`:''}</label>
-    <div id="pv_stories"></div>
+    <div id="pv_stories">${REMOTE?wait:''}</div>
     ${canEdit?`<button class="act" style="width:100%" onclick="openStoryForm('${htmlId(id)}')">＋ Write a story</button>`:''}</div>`;
   $('#panelBody').innerHTML=body;
   $('#panelFoot').style.display='none';
@@ -2027,7 +2115,7 @@ async function uploadGalleryPhoto(file){
   }catch(e){ toast(esc(e.message)); }
 }
 async function deleteGalleryPhoto(pid, photoId){
-  if(settings.confirmDanger && !confirm('Remove this photo from the gallery?')) return;
+  if(settings.confirmDanger && !(await ask('Remove this photo from the gallery?',{title:'Remove photo', confirmLabel:'Remove'}))) return;
   try{
     if(REMOTE){ await api('/gallery/'+htmlId(photoId),{method:'DELETE'}); delete FAMGAL[state.familyId]; }
     else{ const p=P(pid); p.gallery=(p.gallery||[]).filter(x=>x.id!==photoId); saveDB(); }
@@ -2131,7 +2219,7 @@ async function saveStory(pid, sid){
   }catch(e){ toast(esc(e.message)); }
 }
 async function deleteStory(pid, sid){
-  if(settings.confirmDanger && !confirm('Delete this story? This cannot be undone.')) return;
+  if(settings.confirmDanger && !(await ask('Delete this story? This cannot be undone.',{title:'Delete story', confirmLabel:'Delete'}))) return;
   try{
     if(REMOTE) await api('/stories/'+htmlId(sid),{method:'DELETE'});
     else{ const p=P(pid); p.stories=(p.stories||[]).filter(x=>x.id!==sid); saveDB(); }
@@ -2189,7 +2277,7 @@ async function deleteUnion(uid){
   const u=U(uid); if(!u) return;
   const kids=Object.values(DB.persons).filter(x=>x.childOf===uid);
   const msg=kids.length?`Remove this union? Its ${kids.length} child${kids.length>1?'ren':''} keep their records but lose this parent link.`:'Remove this union? Both people stay in the record.';
-  if(settings.confirmDanger && !confirm(msg)) return;
+  if(settings.confirmDanger && !(await ask(msg,{title:'Remove union', confirmLabel:'Remove union'}))) return;
   if(REMOTE){
     try{ await api('/unions/'+encodeURIComponent(uid)+(kids.length?'?force=1':''),{method:'DELETE'});
       await loadFamily(state.familyId); closePanel(); render(); toast('Union removed.'); }
@@ -2204,7 +2292,7 @@ async function deleteUnion(uid){
 /* ---- delete (admin) — detaches unions and re-roots the family if needed ---- */
 async function deletePerson(id){
   const p=P(id); if(!p || !isAdminHere()) return;
-  if(settings.confirmDanger && !confirm(`Move ${p.name} to the Trash? Nothing is lost — you can restore them from the admin console’s Trash tab.`)) return;
+  if(settings.confirmDanger && !(await ask(`Move ${p.name} to the Trash? Nothing is lost — you can restore them from the admin console’s Trash tab.`,{title:'Move to Trash', confirmLabel:'Move to Trash'}))) return;
   if(REMOTE){
     try{
       await api('/persons/'+encodeURIComponent(id),{method:'DELETE'});
@@ -2270,7 +2358,7 @@ async function openFamily(id){ const f=DB.families[id]; if(!f) return; if(!hasAc
   if(!REMOTE){ unlocked.add(id); rememberUnlocked(); }
   state.familyId=id; state.descRoot=null; state.ancFocus=null; closePanel();
   try{ localStorage.setItem('kin.lastFamily', id); }catch{}
-  if(REMOTE && !FAMDATA[id]){ try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } }
+  if(REMOTE && !FAMDATA[id]){ veil(true); try{ await loadFamily(id); }catch(e){ toast(esc(e.message)); } finally{ veil(false); } }
   if(REMOTE){ PENDINGDATA=null; MEMBERS=null; loadPending(); }
   render(); toast(`${strong(f.name)} opened.`); }
 async function requestJoin(fid){
@@ -2425,7 +2513,7 @@ async function restorePerson(id){
   catch(e){ toast(esc(e.message)); }
 }
 async function purgePerson(id,name){
-  if(!confirm(`Permanently delete ${name}? This cannot be undone — it is the only action in Kin that truly loses data.`)) return;
+  if(!(await ask(`Permanently delete ${name}? This cannot be undone — it is the only action in Kin that truly loses data.`,{title:'Delete forever', confirmLabel:'Delete forever'}))) return;
   try{ await api('/persons/'+htmlId(id)+'?purge=1',{method:'DELETE'}); await loadFamily(state.familyId); renderAdmin(); render(); toast('Permanently deleted.'); }
   catch(e){ toast(esc(e.message)); }
 }
@@ -2491,14 +2579,14 @@ async function approveKin(id){
 }
 async function declineKin(id){
   if(REMOTE){
-    if(settings.confirmDanger && !confirm('Decline and remove this submission?')) return;
+    if(settings.confirmDanger && !(await ask('Decline and remove this submission?',{title:'Decline submission', confirmLabel:'Decline'}))) return;
     try{ await api('/persons/'+encodeURIComponent(id)+'/reject',{method:'POST'});
       await loadFamily(state.familyId); await loadPending(); toast('Declined.'); renderAdmin(); render(); }
     catch(e){ toast(esc(e.message)); }
     return;
   }
   const p=P(id); if(!p) return;
-  if(settings.confirmDanger && !confirm(`Decline and remove ${p.name}?`)) return;
+  if(settings.confirmDanger && !(await ask(`Decline and remove ${p.name}?`,{title:'Decline submission', confirmLabel:'Decline'}))) return;
   unionsOf(id).forEach(u=>{ if(u.a===id) u.a=null; if(u.b===id) u.b=null;
     if(!u.a && !u.b){ Object.values(DB.persons).forEach(c=>{ if(c.childOf===u.id) c.childOf=null; }); delete DB.unions[u.id]; } });
   delete DB.persons[id]; saveDB(); toast(`${esc(p.name)} declined.`); renderAdmin(); updateAdminSeal();
@@ -2554,7 +2642,8 @@ function renderSettings(){
     </div>
     <p class="hint" style="margin-top:12px">JSON backs up every family, person, and union. GEDCOM exports the current family for other genealogy software. Reset restores the built-in record.</p>
     <div class="divlabel">About</div>
-    <p class="hint">Kin models genealogy as a graph — persons and unions — so any line can grow upward, downward, or sideways. Open source on <a href="https://github.com/AlfieDavis/Kin" target="_blank" rel="noopener noreferrer" style="color:var(--verd)">GitHub</a>.</p>`;
+    <p class="hint">Kin models genealogy as a graph — persons and unions — so any line can grow upward, downward, or sideways. Open source on <a href="https://github.com/AlfieDavis/Kin" target="_blank" rel="noopener noreferrer" style="color:var(--verd)">GitHub</a>.
+    <br><br><button style="color:var(--gold);background:none;border:none;padding:0;font:inherit;cursor:pointer" onclick="openHelp()">Shortcuts &amp; tips (?)</button> · version ${KIN_VER}</p>`;
 }
 
 /* ---- data tools ---- */
@@ -2582,9 +2671,9 @@ function importJSON(file){
     }catch{ toast('That file is not a Kin backup.'); } };
   r.readAsText(file);
 }
-function resetData(){
+async function resetData(){
   if(REMOTE){ toast('The live record lives in the shared database — nothing to reset here.'); return; }
-  if(settings.confirmDanger && !confirm('Discard saved changes and restore the built-in record?')) return;
+  if(settings.confirmDanger && !(await ask('Discard saved changes and restore the built-in record?',{title:'Reset saved data', confirmLabel:'Reset'}))) return;
   try{ localStorage.removeItem(DB_KEY); }catch{}
   location.reload();
 }
@@ -2790,7 +2879,7 @@ async function tryGate(id){
   if(digest && digest===f.passwordHash){ unlocked.add(id); rememberUnlocked(); closeGate(); state.familyId=id; state.descRoot=null; state.ancFocus=null; closePanel(); render(); toast(`${strong(DB.families[id].name)} opened.`); }
   else { err.textContent=window.crypto?.subtle?'That password does not match.':'Private records require HTTPS.'; input.value=''; }
 }
-function closeGate(){ $('#scrim').classList.remove('show'); }
+function closeGate(){ $('#scrim').classList.remove('show'); if(_askCancel){ const c=_askCancel; _askCancel=null; c(); } }
 
 /* wiring */
 $('#addBtn').onclick=()=>openAdd('root',null);
@@ -2802,8 +2891,41 @@ $('#relateBtn').onclick=openRelate;
 $('#importFile').onchange=e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; };
 $('#photoFile').onchange=e=>{ const f=e.target.files[0]; if(f){ if(state.photoMode==='gallery') uploadGalleryPhoto(f); else uploadPhoto(f); } e.target.value=''; };
 $('#scrim').onclick=e=>{ if(e.target.id==='scrim') closeGate(); };
-$('#search').oninput=e=>{ state.query=e.target.value; if(state.view!=='records'){ state.view='records'; } render(); if(REMOTE) globalSearch(e.target.value); };
-$('#search').onkeydown=e=>{ if(e.key!=='Enter') return;
+/* ---- recently viewed people, offered when the search box is empty ---- */
+let RECENT=[]; try{ const r=JSON.parse(localStorage.getItem('kin.recent')||'[]'); if(Array.isArray(r)) RECENT=r; }catch{}
+function noteRecent(id){
+  const p=P(id); if(!p) return;
+  RECENT=RECENT.filter(r=>r.id!==id);
+  RECENT.unshift({id, fid:p.familyId, name:p.name});
+  RECENT=RECENT.slice(0,8);
+  try{ localStorage.setItem('kin.recent',JSON.stringify(RECENT)); }catch{}
+}
+function showRecents(){
+  const b=$('#searchResults');
+  const items=RECENT.filter(r=>DB.families[r.fid] && hasAccess(r.fid));
+  if(!items.length){ b.classList.remove('show'); return; }
+  b.innerHTML=`<div class="divlabel" style="margin:6px 10px 4px">Recently viewed</div>`+items.map(r=>`<button class="srow" onclick="jumpTo('${htmlId(r.fid)}','${htmlId(r.id)}')">
+    <span class="sn">${esc((P(r.id)||r).name)}</span><span class="sf">${esc((DB.families[r.fid]||{}).name||r.fid)}</span></button>`).join('');
+  b.classList.add('show');
+}
+$('#search').onfocus=()=>{ if(!$('#search').value.trim()) showRecents(); };
+$('#search').oninput=e=>{ state.query=e.target.value;
+  if(!e.target.value.trim()){ showRecents(); render(); return; }
+  if(state.view!=='records'){ state.view='records'; } render(); if(REMOTE) globalSearch(e.target.value); };
+$('#search').onkeydown=e=>{
+  const b=$('#searchResults');
+  const rows=b.classList.contains('show')?[...b.querySelectorAll('.srow')]:[];
+  if(rows.length && (e.key==='ArrowDown'||e.key==='ArrowUp')){
+    e.preventDefault();
+    let i=rows.findIndex(r=>r.classList.contains('active'));
+    rows.forEach(r=>r.classList.remove('active'));
+    i = e.key==='ArrowDown' ? (i+1)%rows.length : (i<=0?rows.length-1:i-1);
+    rows[i].classList.add('active'); rows[i].scrollIntoView?.({block:'nearest'});
+    return;
+  }
+  if(e.key!=='Enter') return;
+  const act=rows.find(r=>r.classList.contains('active'));
+  if(act){ act.click(); return; }
   const q=state.query.toLowerCase(); if(!q) return;
   const hit=approvedOf(state.familyId).find(p=>p.name.toLowerCase().includes(q)||(p.bio||'').toLowerCase().includes(q));
   if(hit) openPerson(hit.id); };
@@ -2836,6 +2958,8 @@ svg.on('contextmenu',e=>{ if(!hasAccess(state.familyId)){ e.preventDefault(); re
 document.addEventListener('contextmenu',e=>{ if(_ctxEl && !e.target.closest('.ctxmenu')) closeCtx(); });
 document.addEventListener('scroll',()=>closeCtx(),true);
 window.addEventListener('blur',()=>closeCtx());
+window.addEventListener('offline',()=>toast('You are offline — changes can’t reach the shared record right now.'));
+window.addEventListener('online',()=>toast('Back online.'));
 $('#viewToggle').querySelectorAll('button').forEach(b=>b.onclick=()=>{ state.view=b.dataset.view; render(); });
 $('#zoomers').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.z==='png') exportPNG(); else if(b.dataset.z==='fit') fitView(); else svg.transition().duration(250).call(zoom.scaleBy,b.dataset.z==='in'?1.3:1/1.3); });
 svg.on('click',()=>closePanel());
@@ -2849,6 +2973,7 @@ document.onkeydown=e=>{
   }
   if(e.key==='Escape'){ if(_ctxEl){ closeCtx(); return; } closePanel(); closeGate(); if($('#welcome').classList.contains('show')) dismissWelcome(); if(typing) document.activeElement.blur(); }
   else if(e.key==='/' && !typing){ e.preventDefault(); $('#search').focus(); }
+  else if(e.key==='?' && !typing){ e.preventDefault(); openHelp(); }
   else if(!typing && !e.ctrlKey && !e.metaKey && !e.altKey){
     if(e.key>='1' && e.key<='5'){ state.view=['desc','anc','time','photos','records'][Number(e.key)-1]; render(); }
     else if(e.key==='f' && state.view!=='records' && state.view!=='photos') fitView();

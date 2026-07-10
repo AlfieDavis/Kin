@@ -1,0 +1,13 @@
+{
+  "name": "Kin — Family Record",
+  "short_name": "Kin",
+  "description": "Browse genealogy as a graph: descendant trees, ancestor charts, timelines, photos, and stories.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#15171C",
+  "theme_color": "#15171C",
+  "icons": [
+    { "src": "./Kin.png", "sizes": "1254x1254", "type": "image/png", "purpose": "any" }
+  ]
+}
