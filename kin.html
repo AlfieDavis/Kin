@@ -415,6 +415,7 @@ html[data-theme="light"] .welcome{background:radial-gradient(900px 620px at 50% 
   <div class="lb-tools" id="lbTools"></div>
 </div>
 <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+<input type="file" id="gedFile" accept=".ged,.gedcom,text/plain" style="display:none">
 <input type="file" id="photoFile" accept="image/*" style="display:none">
 
 <div class="welcome" id="welcome" role="dialog" aria-modal="true" aria-label="Welcome to Kin">
@@ -1497,7 +1498,7 @@ function renderRecords(){
   const chip=(key,val,label)=>`<button class="${state[key]===val?'active':''}" onclick="state.${key}='${val}';renderRecords()">${label}</button>`;
   $('#recTools').innerHTML=`<div class="viewtoggle">${chip('recFilter','all','All')}${chip('recFilter','living','Living')}${chip('recFilter','memory','In memory')}</div>
     <div class="viewtoggle">${chip('recSort','name','A–Z')}${chip('recSort','born','By birth')}</div>
-    <div class="viewtoggle"><button onclick="exportCSV()">⤓ CSV</button></div>`;
+    <div class="viewtoggle"><button onclick="exportCSV()">⤓ CSV</button><button onclick="exportICS()">⤓ Birthdays</button></div>`;
   renderOnThisDay();
   $('#recCount').textContent=`${list.length} of ${approvedOf(state.familyId).length} kin`;
   const st=familyStats(state.familyId);
@@ -1663,6 +1664,7 @@ function personCtx(e,id){
     REMOTE?{l:'Copy link', i:'⎘', fn:()=>copyPersonLink(id)}:null,
     (canEdit||canSuggest)?'—':null,
     (canEdit||canSuggest)?{l:canEdit?'Edit record…':'Suggest an edit…', i:'✎', fn:()=>{ openPanelBare(); openEdit(id); }}:null,
+    (canEdit&&isAdminHere())?{l:'Merge duplicate…', i:'⇥', fn:()=>openMerge(id)}:null,
     (canEdit&&isAdminHere())?{l:'Delete record…', i:'✕', danger:true, fn:()=>deletePerson(id)}:null,
   ]);
 }
@@ -1813,7 +1815,7 @@ function openAdd(relation, anchorId){
         ${partners.map(({p:pp},i)=>`<option value="${htmlId(pp.id)}"${partners.length===1&&i===0?' selected':''}>${esc(pp.name)}</option>`).join('')}
         <option value="__new">＋ Someone new — add them too</option>
       </select></div>
-    <div class="field" id="f_newpartner" style="display:none"><label>New partner's full name</label><input class="finput" id="f_pname" placeholder="e.g. Grace Okafor"></div>
+    <div class="field" id="f_newpartner" style="display:none"><label>New partner's full name</label><input class="finput" id="f_pname" placeholder="e.g. Grace Okafor" oninput="pnameCheck('${htmlId(anchorId||'')}')"><div id="f_pdupe"></div></div>
     <div class="field"><label>Relationship to parents</label><select class="finput" id="f_ctype">
       <option value="">Biological</option><option value="adopted">Adopted</option><option value="step">Step</option><option value="foster">Foster</option></select></div>`:'';
   const partnerBits = relation==='partner'?`
@@ -1848,13 +1850,43 @@ function openAdd(relation, anchorId){
   $('#panelFoot').style.display='flex';
   $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="closePanel()">Cancel</button><button class="btn-fill" onclick="submitKin()">${canEditHere()?'Add to tree':'Submit for approval'}</button>`;
   $('#panel').classList.add('open'); setTimeout(()=>$('#f_name')?.focus(),320);
-  if(REMOTE && ['partner','parent','child'].includes(relation)){
-    const banner=`<div class="hint" style="margin:-6px 0 14px;padding:10px 12px;background:var(--ink-3);border:1px solid var(--line);border-radius:9px">
-      Already in another family tree? <button style="color:var(--gold);text-decoration:underline" onclick="openLink('${esc(relation)}','${htmlId(anchorId||'')}')">Link them instead of retyping →</button></div>`;
-    $('#panelBody').insertAdjacentHTML('afterbegin',banner);
+  if(['partner','parent','child'].includes(relation)){
+    if(REMOTE){
+      const banner=`<div class="hint" style="margin:-6px 0 14px;padding:10px 12px;background:var(--ink-3);border:1px solid var(--line);border-radius:9px">
+        Already in another family tree? <button style="color:var(--gold);text-decoration:underline" onclick="openLink('${esc(relation)}','${htmlId(anchorId||'')}')">Link them instead of retyping →</button></div>`;
+      $('#panelBody').insertAdjacentHTML('afterbegin',banner);
+    }
     const ni=$('#f_name'); if(ni) ni.oninput=()=>dupeCheck(ni.value);
   }
 }
+/* the "someone new" co-parent field is the classic duplicate factory:
+   warn the moment the typed name matches someone already recorded */
+function pnameCheck(anchorId){
+  state._pnameForce=false;
+  const box=$('#f_pdupe'); if(!box) return;
+  const v=($('#f_pname')?.value||'').trim().toLowerCase();
+  if(v.length<3){ box.innerHTML=''; return; }
+  const hits=Object.values(DB.persons)
+    .filter(x=>x.status==='approved' && x.id!==anchorId && hasAccess(x.familyId) && x.name.toLowerCase().includes(v))
+    .slice(0,3);
+  box.innerHTML=hits.length?`<div class="hint" style="margin:8px 0 0;padding:9px 11px;background:rgba(201,168,99,.08);border:1px solid var(--gold-soft);border-radius:9px">
+    <b style="color:var(--gold)">Already recorded?</b> Picking them avoids a duplicate in the tree:
+    ${hits.map(h=>`<button style="display:block;margin-top:6px;text-align:left;color:var(--bone)" onclick="useExistingPartner('${htmlId(h.id)}')">→ Use ${esc(h.name)} <span style="color:var(--muted)">· ${esc((DB.families[h.familyId]||{}).name||h.familyId)}${h.born?' · b. '+esc(String(yearOf(h.born)||h.born)):''}</span></button>`).join('')}</div>`:'';
+}
+function useExistingPartner(pid){
+  const sel=$('#f_with'); if(!sel) return;
+  if(![...sel.options].some(o=>o.value===pid)){
+    const p=P(pid), o=document.createElement('option');
+    o.value=pid; o.textContent=(p?p.name:pid)+' (existing record)';
+    sel.insertBefore(o, sel.querySelector('option[value="__new"]'));
+  }
+  sel.value=pid;
+  const np=$('#f_newpartner'); if(np) np.style.display='none';
+  if($('#f_pname')) $('#f_pname').value='';
+  const box=$('#f_pdupe'); if(box) box.innerHTML='';
+  toast('Using the existing record — no duplicate will be created.');
+}
+
 /* proactive duplicate detection — steer toward linking, not copying */
 let _dupeTimer=null;
 function dupeCheck(q){
@@ -1862,13 +1894,17 @@ function dupeCheck(q){
   if(!q || q.trim().length<3){ box.innerHTML=''; return; }
   _dupeTimer=setTimeout(async()=>{
     try{
-      const d=await api('/search?q='+encodeURIComponent(q.trim()));
       const rel=$('#f_rel')?.value, anchor=$('#f_anchor')?.value;
-      const hits=(d.results||[]).filter(r=>r.id!==anchor).slice(0,4);
+      let results=[];
+      if(REMOTE) results=(await api('/search?q='+encodeURIComponent(q.trim()))).results||[];
+      else results=Object.values(DB.persons)
+        .filter(x=>x.status==='approved' && hasAccess(x.familyId) && x.name.toLowerCase().includes(q.trim().toLowerCase()))
+        .map(x=>({id:x.id, familyId:x.familyId, name:x.name, born:x.born}));
+      const hits=results.filter(r=>r.id!==anchor).slice(0,4);
       if(!hits.length){ box.innerHTML=''; return; }
       box.innerHTML=`<div class="hint" style="margin:-4px 0 14px;padding:10px 12px;background:rgba(201,168,99,.08);border:1px solid var(--gold-soft);border-radius:9px">
-        <b style="color:var(--gold)">Possible match already in Kin</b> — link instead of creating a duplicate:
-        ${hits.map(r=>`<button style="display:block;margin-top:7px;text-align:left;color:var(--bone)" onclick="linkPerson('${esc(rel)}','${htmlId(anchor)}','${htmlId(r.id)}')">→ ${esc(r.name)} <span style="color:var(--muted)">· ${esc((DB.families[r.familyId]||{}).name||r.familyId)}${r.born?' · b. '+esc(String(r.born)):''}</span></button>`).join('')}</div>`;
+        <b style="color:var(--gold)">Possible match already in Kin</b> — ${REMOTE?'link instead of creating a duplicate':'check before creating a duplicate'}:
+        ${hits.map(r=>`<button style="display:block;margin-top:7px;text-align:left;color:var(--bone)" onclick="${REMOTE?`linkPerson('${esc(rel)}','${htmlId(anchor)}','${htmlId(r.id)}')`:`openPerson('${htmlId(r.id)}')`}">→ ${esc(r.name)} <span style="color:var(--muted)">· ${esc((DB.families[r.familyId]||{}).name||r.familyId)}${r.born?' · b. '+esc(String(r.born)):''}</span></button>`).join('')}</div>`;
     }catch{}
   },250);
 }
@@ -1922,6 +1958,15 @@ async function submitKin(){
   const withVal=$('#f_with')?$('#f_with').value:'';
   const newPartnerName=withVal==='__new'?($('#f_pname')?.value||'').trim():'';
   if(withVal==='__new' && !newPartnerName){ toast('Name the new partner — or choose “Not recorded”.'); $('#f_pname')?.focus(); return; }
+  if(withVal==='__new'){
+    const dup=Object.values(DB.persons).find(x=>x.status==='approved' && x.familyId===state.familyId && x.name.trim().toLowerCase()===newPartnerName.toLowerCase());
+    if(dup && !state._pnameForce){
+      state._pnameForce=true;
+      toast(`${strong(dup.name)} is already recorded — pick them under “Other parent”, or press again to create a separate person anyway.`);
+      return;
+    }
+  }
+  state._pnameForce=false;
   const childType=$('#f_ctype')?.value||null;
   /* partner options */
   const unionType=$('#f_utype')?.value||'marriage';
@@ -2226,6 +2271,197 @@ async function deleteStory(pid, sid){
     toast('Story deleted.');
     if(state.lastPerson===pid) loadPersonMedia(pid);
   }catch(e){ toast(esc(e.message)); }
+}
+
+/* ================================================================
+   MERGE DUPLICATES — fold an accidental double into the real record
+   ================================================================ */
+function mergePersonsLocal(srcId, tgtId){
+  const src=P(srcId), tgt=P(tgtId); if(!src||!tgt) return;
+  // a union between the two would become a self-union — remove it first
+  Object.values(DB.unions).forEach(u=>{
+    const pair=[u.a,u.b];
+    if(pair.includes(srcId)&&pair.includes(tgtId)){
+      Object.values(DB.persons).forEach(c=>{ if(c.childOf===u.id) c.childOf=null; });
+      delete DB.unions[u.id];
+    }
+  });
+  Object.values(DB.unions).forEach(u=>{ if(u.a===srcId) u.a=tgtId; if(u.b===srcId) u.b=tgtId; });
+  // two unions now covering the same pair collapse into one
+  const seen={};
+  Object.values(DB.unions).forEach(u=>{
+    if(u.a!==tgtId&&u.b!==tgtId) return;
+    const key=[u.a||'',u.b||''].sort().join('|');
+    const kept=seen[key];
+    if(!kept){ seen[key]=u; return; }
+    Object.values(DB.persons).forEach(c=>{ if(c.childOf===u.id) c.childOf=kept.id; });
+    kept.since=kept.since||u.since; kept.until=kept.until||u.until;
+    delete DB.unions[u.id];
+  });
+  ['childOf','childType','born','died','bio','occupation','place','sex'].forEach(k=>{ if(tgt[k]==null||tgt[k]==='') tgt[k]=src[k]??tgt[k]; });
+  if(!tgt.photoData && src.photoData) tgt.photoData=src.photoData;
+  else if(src.photoData) (tgt.gallery=tgt.gallery||[]).push({id:'g'+Date.now(), dataUrl:src.photoData, caption:'Portrait from merged record'});
+  if(src.gallery&&src.gallery.length) tgt.gallery=[...(tgt.gallery||[]),...src.gallery];
+  if(src.stories&&src.stories.length) tgt.stories=[...(tgt.stories||[]),...src.stories];
+  const f=DB.families[src.familyId];
+  if(f){ if(f.rootId===srcId) f.rootId=tgtId; if(f.pivotId===srcId) f.pivotId=tgtId; }
+  delete DB.persons[srcId];
+  if(state.descRoot===srcId) state.descRoot=null;
+  if(state.ancFocus===srcId) state.ancFocus=null;
+  saveDB();
+}
+function openMerge(id){
+  const p=P(id); if(!p) return;
+  openPanelBare();
+  $('#panelHead').innerHTML=`<button class="panel-close" onclick="closePanel()">✕</button><h2>Merge duplicate</h2>
+    <div class="pv-dates" style="color:var(--muted)">${esc(p.name)} folds into the record you pick</div>`;
+  $('#panelBody').innerHTML=`
+    <p class="hint">Everything on ${strong(p.name)} — unions, children, photos, stories, and any details the other record is missing — moves across, and this duplicate is removed. The fix for the same person appearing twice in the tree.</p>
+    <div class="field"><input class="finput" id="mg_q" placeholder="Search for the record to KEEP…" autocomplete="off"></div>
+    <div id="mg_results"></div>`;
+  $('#panelFoot').style.display='flex';
+  $('#panelFoot').innerHTML=`<button class="btn-ghost" onclick="openPerson('${htmlId(id)}')">Cancel</button>`;
+  const q=$('#mg_q');
+  q.value=p.name.split(' ')[0];       // likely duplicates share a first name
+  mergeSearch(id,q.value);
+  setTimeout(()=>q.focus(),120);
+  q.oninput=()=>mergeSearch(id,q.value);
+}
+let _mgTimer=null;
+function mergeSearch(srcId,qv){
+  clearTimeout(_mgTimer); const box=$('#mg_results'); if(!box) return;
+  if(!qv||qv.trim().length<2){ box.innerHTML='<div class="empty">Type at least two letters.</div>'; return; }
+  _mgTimer=setTimeout(async()=>{
+    let hits=[];
+    if(REMOTE){ try{ hits=(await api('/search?q='+encodeURIComponent(qv.trim()))).results||[]; }catch{} }
+    else hits=Object.values(DB.persons).filter(x=>x.status==='approved'&&hasAccess(x.familyId)&&x.name.toLowerCase().includes(qv.trim().toLowerCase()));
+    hits=hits.filter(h=>h.id!==srcId).slice(0,8);
+    box.innerHTML=hits.length?`<div class="rel-list">${hits.map(h=>`<button class="rel" onclick="doMerge('${htmlId(srcId)}','${htmlId(h.id)}')">
+      <span class="rav">${esc(initials(h.name))}</span><span class="rn">${esc(h.name)}<br><span style="color:var(--muted);font-size:11px">${esc((DB.families[h.familyId]||{}).name||h.familyId)}${h.born?' · b. '+esc(String(h.born)):''}</span></span><span class="rr">Keep</span></button>`).join('')}</div>`
+      :'<div class="empty">No matches.</div>';
+  },250);
+}
+async function doMerge(srcId,tgtId){
+  const src=P(srcId), tgtName=(P(tgtId)||{}).name||'the chosen record';
+  if(!(await ask(`Fold ${src?src.name:'this record'} into ${tgtName}? The duplicate disappears; its unions, children, photos, and stories move over.`,{title:'Merge records', confirmLabel:'Merge'}))) return;
+  if(REMOTE){
+    try{
+      const d=await api('/persons/'+htmlId(srcId)+'/merge',{method:'POST',body:{targetId:tgtId}});
+      delete FAMGAL[state.familyId];
+      await loadFamily(state.familyId); render();
+      toast('Merged into one record.'); openPerson(d.kept||tgtId);
+    }catch(e){ toast(esc(e.message)); }
+    return;
+  }
+  mergePersonsLocal(srcId,tgtId);
+  render(); toast('Merged into one record.'); openPerson(tgtId);
+}
+
+/* ================================================================
+   GEDCOM IMPORT — bring a tree in from other genealogy software
+   ================================================================ */
+function parseGEDCOM(text){
+  const inds={}, fams={};
+  let cur=null, curType=null, ctx=[];
+  for(const raw of String(text).split(/\r?\n/)){
+    const m=raw.match(/^\s*(\d+)\s+(@[^@]+@)?\s*(\S+)(?:\s(.*))?$/); if(!m) continue;
+    const lvl=Number(m[1]), xref=m[2], tag=m[3].toUpperCase(), val=(m[4]||'').trim();
+    if(lvl===0){
+      cur=null; curType=null; ctx=[];
+      if(xref && tag==='INDI'){ cur=inds[xref]={id:xref, name:'', sex:null, born:null, died:null, dead:false, place:null, occ:null, notes:[], famc:null, pedi:null}; curType='I'; }
+      else if(xref && tag==='FAM'){ cur=fams[xref]={id:xref, husb:null, wife:null, type:'marriage', since:null, until:null}; curType='F'; }
+      continue;
+    }
+    if(!cur) continue;
+    ctx[lvl]=tag; ctx.length=lvl+1;
+    if(curType==='I'){
+      if(lvl===1){
+        if(tag==='NAME'&&!cur.name) cur.name=val.replace(/\//g,'').replace(/\s+/g,' ').trim();
+        else if(tag==='SEX') cur.sex=(val==='M'||val==='F')?val:null;
+        else if(tag==='FAMC') cur.famc=val;
+        else if(tag==='OCCU') cur.occ=val||null;
+        else if(tag==='NOTE') cur.notes.push(val);
+        else if(tag==='DEAT') cur.dead=true;
+      } else if(lvl===2){
+        const p=ctx[1];
+        if(tag==='DATE'&&p==='BIRT') cur.born=val||null;
+        else if(tag==='DATE'&&p==='DEAT') cur.died=val||null;
+        else if(tag==='PLAC'&&p==='BIRT'&&!cur.place) cur.place=val||null;
+        else if(tag==='PEDI'&&p==='FAMC') cur.pedi=val.toLowerCase();
+        else if((tag==='CONT'||tag==='CONC')&&p==='NOTE'&&cur.notes.length) cur.notes[cur.notes.length-1]+=(tag==='CONT'?'\n':'')+val;
+      }
+    } else {
+      if(lvl===1){
+        if(tag==='HUSB') cur.husb=val;
+        else if(tag==='WIFE') cur.wife=val;
+        else if(tag==='DIV') cur.type='divorced';
+      } else if(lvl===2){
+        if(tag==='DATE'&&ctx[1]==='MARR') cur.since=val||null;
+        else if(tag==='DATE'&&ctx[1]==='DIV') cur.until=val||null;
+      }
+    }
+  }
+  // children live on the FAM record; hand each person their union
+  return {inds, fams};
+}
+async function importGEDCOM(file){
+  let text=''; try{ text=await file.text(); }catch{ toast('Could not read that file.'); return; }
+  const {inds,fams}=parseGEDCOM(text);
+  const pl=Object.values(inds), ul=Object.values(fams);
+  if(!pl.length){ toast('No people found in that GEDCOM file.'); return; }
+  if(pl.length>400){ toast('That file holds more than 400 people — split it before importing.'); return; }
+  if(REMOTE && !canEditHere()){ toast('Only family editors and admins can import here.'); return; }
+  if(!(await ask(`Import ${pl.length} people and ${ul.length} unions into ${fam().name}? They are added alongside the existing record — nothing is overwritten.`,{title:'Import GEDCOM', confirmLabel:'Import', danger:false}))) return;
+  const died=p=>p.died||(p.dead?'—':null);
+  const ctype=p=>['adopted','step','foster'].includes(p.pedi)?p.pedi:null;
+  if(REMOTE){
+    veil(true);
+    try{
+      const d=await api('/families/'+encodeURIComponent(state.familyId)+'/import',{method:'POST',body:{
+        persons:pl.map(p=>({tmp:p.id, name:p.name||'Unknown', sex:p.sex, born:p.born, died:died(p),
+          bio:p.notes.join('\n').slice(0,1000)||null, occupation:p.occ, place:p.place, childOfTmp:p.famc, childType:ctype(p)})),
+        unions:ul.map(u=>({tmp:u.id, aTmp:u.husb, bTmp:u.wife, type:u.type, since:u.since, until:u.until})),
+      }});
+      delete FAMGAL[state.familyId];
+      await loadFamily(state.familyId); render();
+      toast(`Imported ${strong(d.persons)} people and ${d.unions} unions.`);
+    }catch(e){ toast(esc(e.message)); }
+    finally{ veil(false); }
+    return;
+  }
+  const umap={}, pmap={};
+  ul.forEach(u=>{ umap[u.id]='u'+(++_uid)+Math.random().toString(36).slice(2,6); });
+  pl.forEach(p=>{ pmap[p.id]='x'+(++_pid)+Math.random().toString(36).slice(2,6); });
+  ul.forEach(u=>{ DB.unions[umap[u.id]]={id:umap[u.id], a:pmap[u.husb]||null, b:pmap[u.wife]||null,
+    type:['marriage','partnership','divorced','separated'].includes(u.type)?u.type:'marriage', since:u.since||null, until:u.until||null, status:'approved'}; });
+  pl.forEach(p=>{ DB.persons[pmap[p.id]]={id:pmap[p.id], familyId:state.familyId, name:p.name||'Unknown', born:p.born||null, died:died(p),
+    bio:p.notes.join('\n').slice(0,1000)||'', occupation:p.occ||null, place:p.place||null, sex:p.sex, links:[], contacts:[],
+    childOf:(p.famc&&umap[p.famc])||null, childType:ctype(p), status:'approved'}; });
+  saveDB(); render(); toast(`Imported ${strong(pl.length)} people and ${ul.length} unions.`);
+}
+
+/* ================================================================
+   BIRTHDAY CALENDAR (.ics) — subscribe-able in any calendar app
+   ================================================================ */
+function exportICS(){
+  const events=[];
+  approvedOf(state.familyId).forEach(p=>{
+    if(!isLiving(p)) return;
+    const md=mdOf(p.born); if(!md) return;
+    const by=Number(yearOf(p.born));
+    const mm=String(md[0]+1).padStart(2,'0'), dd=String(md[1]).padStart(2,'0');
+    events.push('BEGIN:VEVENT',
+      `UID:kin-${p.id}-bday@jackblaker.com`,
+      `DTSTART;VALUE=DATE:${by||2000}${mm}${dd}`,
+      'RRULE:FREQ=YEARLY',
+      `SUMMARY:🎂 ${String(p.name).replace(/[\\;,]/g,' ')}${by?` (born ${by})`:''}`,
+      'TRANSP:TRANSPARENT','END:VEVENT');
+  });
+  if(!events.length){ toast('No living people with full birth dates yet — add month and day to see birthdays.'); return; }
+  download(`kin-${state.familyId}-birthdays.ics`,
+    ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Kin//Family Record//EN','X-WR-CALNAME:'+fam().name+' birthdays',...events,'END:VCALENDAR'].join('\r\n'),
+    'text/calendar');
+  toast('Birthday calendar downloaded — import it into Google or Apple Calendar.');
 }
 
 /* ================================================================
@@ -2638,9 +2874,11 @@ function renderSettings(){
       <button class="act" onclick="exportJSON()">Export JSON</button>
       <button class="act" onclick="document.getElementById('importFile').click()">Import JSON</button>
       <button class="act" onclick="exportGEDCOM()">Export GEDCOM</button>
+      <button class="act" onclick="document.getElementById('gedFile').click()">Import GEDCOM</button>
+      <button class="act" onclick="exportICS()">Birthdays → calendar</button>
       <button class="act danger" onclick="resetData()">Reset saved data</button>
     </div>
-    <p class="hint" style="margin-top:12px">JSON backs up every family, person, and union. GEDCOM exports the current family for other genealogy software. Reset restores the built-in record.</p>
+    <p class="hint" style="margin-top:12px">JSON backs up every family, person, and union. GEDCOM moves whole trees to and from other genealogy software (Ancestry, Gramps, FamilySearch…). The birthday calendar (.ics) drops into Google or Apple Calendar. Reset restores the built-in record.</p>
     <div class="divlabel">About</div>
     <p class="hint">Kin models genealogy as a graph — persons and unions — so any line can grow upward, downward, or sideways. Open source on <a href="https://github.com/AlfieDavis/Kin" target="_blank" rel="noopener noreferrer" style="color:var(--verd)">GitHub</a>.
     <br><br><button style="color:var(--gold);background:none;border:none;padding:0;font:inherit;cursor:pointer" onclick="openHelp()">Shortcuts &amp; tips (?)</button> · version ${KIN_VER}</p>`;
@@ -2889,6 +3127,7 @@ $('#accountBtn').onclick=openAccount;
 $('#settingsBtn').onclick=openSettings;
 $('#relateBtn').onclick=openRelate;
 $('#importFile').onchange=e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; };
+$('#gedFile').onchange=e=>{ const f=e.target.files[0]; if(f) importGEDCOM(f); e.target.value=''; };
 $('#photoFile').onchange=e=>{ const f=e.target.files[0]; if(f){ if(state.photoMode==='gallery') uploadGalleryPhoto(f); else uploadPhoto(f); } e.target.value=''; };
 $('#scrim').onclick=e=>{ if(e.target.id==='scrim') closeGate(); };
 /* ---- recently viewed people, offered when the search box is empty ---- */
